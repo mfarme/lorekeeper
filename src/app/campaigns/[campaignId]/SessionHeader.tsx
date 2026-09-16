@@ -40,6 +40,7 @@ function HeaderAudioControl({
   onVolume,
   OnIcon,
   OffIcon,
+  error,
 }: {
   onLabel: string;
   offLabel: string;
@@ -52,6 +53,7 @@ function HeaderAudioControl({
   onVolume: (value: number) => void;
   OnIcon: LucideIcon;
   OffIcon: LucideIcon;
+  error?: string | null;
 }) {
   const quiet = muted || !unlocked;
   const toggleLabel = !unlocked ? enableLabel : muted ? offLabel : onLabel;
@@ -115,6 +117,17 @@ function HeaderAudioControl({
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
       </div>
+      {error ? (
+        <Tooltip content={error} side="bottom">
+          <span
+            className="hidden max-w-52 truncate text-[10px] text-red-300 sm:inline"
+            role="status"
+            aria-live="polite"
+          >
+            Narration audio: {error}
+          </span>
+        </Tooltip>
+      ) : null}
     </>
   );
 }
@@ -233,12 +246,16 @@ export function SessionHeader({
             muted={narration.muted}
             volume={narration.volume}
             onToggle={() => {
-              narration.unlock();
+              if (!narration.unlocked) {
+                narration.unlock();
+                return;
+              }
               narration.setMuted(!narration.muted);
             }}
             onVolume={(value) => narration.setVolume(value)}
             OnIcon={Volume2}
             OffIcon={VolumeX}
+            error={narration.playbackError}
           />
         ) : null}
         {ambienceEnabled && ambience.installed ? (
@@ -251,7 +268,10 @@ export function SessionHeader({
             muted={ambience.muted}
             volume={ambience.volume}
             onToggle={() => {
-              ambience.unlock();
+              if (!ambience.unlocked) {
+                ambience.unlock();
+                return;
+              }
               ambience.setMuted(!ambience.muted);
             }}
             onVolume={(value) => ambience.setVolume(value)}

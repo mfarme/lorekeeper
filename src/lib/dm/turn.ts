@@ -82,7 +82,9 @@ import { takeDirectorArm } from "@/lib/db/director-arms";
 import { listPins } from "@/lib/db/pins";
 import { isStageEnabled } from "@/lib/dm/stages";
 import { renderVariantRules } from "@/lib/dm/rules-logic";
-import { storyContextTokens } from "@/lib/model-client";
+import { dmMaxOutputTokens, storyContextTokens } from "@/lib/model-client";
+import { isLemonadeBaseUrl } from "@/lib/lemonade";
+import { serverEnv } from "@/lib/server-env";
 import { restoreMentionedNpcs } from "@/lib/dm/npc-archive";
 import { handleRecallStory } from "@/lib/dm/recall";
 import { handleSearchLore, searchLoreTool } from "@/lib/dm/lore-search";
@@ -596,6 +598,14 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
   // DM_LEAN_TOOLS=1 trims the mutation tools if the model's tool fidelity
   // suffers under the full set.
   const leanTools = process.env.DM_LEAN_TOOLS === "1";
+  // Qwen on Lemonade can spend a long time in hidden reasoning before it
+  // emits a tool or narration token. The voice/table default is direct output;
+  // legacy compatible backends retain the previous behavior unless explicitly
+  // disabled. Set DM_THINKING=1 to opt Lemonade back in.
+  const thinkingConfigured = serverEnv("DM_THINKING");
+  const thinkingEnabled =
+    thinkingConfigured === "1" ||
+    (thinkingConfigured !== "0" && !isLemonadeBaseUrl(campaign.settings.customBaseUrl));
   // Chapters close on story progress, not message volume: the DM reports a
   // finished beat with complete_beat and that ends the chapter. One per
   // advance() run, so a single reply can never burn several beats.
@@ -675,11 +685,10 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
       // Force pure narration on the last permitted call so a tool-happy
       // model cannot loop forever.
       toolChoice: finalCall ? "none" : "auto",
-      // Thinking mode on tool-decision calls only: without it Qwen3.6
-      // narrates right past its tools (0/11 tool calls in live combat);
-      // with it, rolls and encounters fire reliably. The forced-narration
-      // final call skips it to keep turns snappy. DM_THINKING=0 disables.
-      thinking: !finalCall && process.env.DM_THINKING !== "0",
+      // tool-calling turns stay bounded for the table. The forced-narration
+      // final call skips it to keep turns snappy. DM_THINKING=1 opts in.
+      thinking: !finalCall && thinkingEnabled,
+      maxOutputTokens: dmMaxOutputTokens(),
       onDelta: (text) => {
         const visible = filter.push(text);
         if (visible) {

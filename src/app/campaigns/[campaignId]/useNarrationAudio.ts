@@ -37,6 +37,7 @@ export type NarrationAudio = {
   volume: number;
   unlocked: boolean;
   playingMessageId: string | null;
+  playbackError: string | null;
   setMuted: (muted: boolean) => void;
   setVolume: (volume: number) => void;
   unlock: () => void;
@@ -50,6 +51,7 @@ export function useNarrationAudio(): NarrationAudio {
   const volume = useSyncExternalStore(subscribePrefs, readVolume, () => 0.8);
   const [unlocked, setUnlocked] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioByMessage] = useState(() => new Map<string, string>());
   const unlockedRef = useRef(false);
@@ -72,6 +74,7 @@ export function useNarrationAudio(): NarrationAudio {
 
   const setMuted = useCallback((next: boolean) => {
     writeAudioPref("narrationMuted", next);
+    setPlaybackError(null);
     if (next) {
       audioRef.current?.pause();
       queueRef.current = [];
@@ -90,16 +93,26 @@ export function useNarrationAudio(): NarrationAudio {
   }, []);
 
   const startPlayback = useCallback((messageId: string, url: string) => {
+    setPlaybackError(null);
     // Named plain function so playback can chain into the queued narration
     // when the current one ends.
     function run(id: string, src: string) {
       if (!audioRef.current) {
         audioRef.current = registerOutput(new Audio());
+        audioRef.current.preload = "auto";
       }
       const audio = audioRef.current;
-      const finish = () => {
+      const finish = (errorMessage?: string) => {
         if (playingRef.current !== id) {
           return;
+        }
+        if (errorMessage) {
+          console.error("[tts] narration playback failed", {
+            messageId: id,
+            src,
+            error: errorMessage,
+          });
+          setPlaybackError(errorMessage);
         }
         playingRef.current = null;
         setPlayingMessageId(null);
@@ -108,15 +121,31 @@ export function useNarrationAudio(): NarrationAudio {
           run(next.messageId, next.url);
         }
       };
-      audio.onended = finish;
-      audio.onerror = finish;
+      audio.onended = () => finish();
+      audio.onerror = () => finish("The narration audio file could not be played.");
       playingRef.current = id;
       setPlayingMessageId(id);
       audio.src = src;
       audio.volume = readVolume();
-      audio.play().catch(() => {
-        // Autoplay blocked until a user gesture; the unlock handlers cover it.
-        finish();
+      audio.load();
+      void audio.play().catch((error: unknown) => {
+        const name =
+          typeof error === "object" && error !== null && "name" in error
+            ? String((error as { name?: unknown }).name ?? "")
+            : "";
+        if (name === "NotAllowedError") {
+          console.warn("[tts] browser blocked autoplay; waiting for a speaker gesture", {
+            messageId: id,
+          });
+          if (playingRef.current === id) {
+            playingRef.current = null;
+            setPlayingMessageId(null);
+            pendingRef.current.unshift({ messageId: id, url: src });
+          }
+          setPlaybackError("Click the narration speaker to enable audio.");
+          return;
+        }
+        finish("The narration audio could not start.");
       });
     }
     run(messageId, url);
@@ -134,6 +163,7 @@ export function useNarrationAudio(): NarrationAudio {
   // The browser requires a user gesture before audio can play; the header
   // speaker toggle doubles as that gesture.
   const unlock = useCallback(() => {
+    setPlaybackError(null);
     setUnlocked(true);
     unlockedRef.current = true;
     // Anything that arrived before this gesture starts now, oldest first,
@@ -195,6 +225,7 @@ export function useNarrationAudio(): NarrationAudio {
     volume,
     unlocked,
     playingMessageId,
+    playbackError,
     setMuted,
     setVolume,
     unlock,

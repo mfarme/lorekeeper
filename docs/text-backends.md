@@ -20,6 +20,14 @@ curl -sS -X POST http://127.0.0.1:13305/api/v1/load \
 Then run `npm run start:lemonade`. The same Lemonade host supplies TTS,
 Moonshine STT, and the OpenAI-compatible `Z-Image-Turbo-TheNoise` image route.
 
+The Lemonade Qwen model has a **262,144-token (256K) native context window**.
+ODM uses that full window for the context trace and reserves 2,048 tokens for a
+reply. The DM separately caps generated narration at 2,048 tokens by default;
+that output cap is not a reduction of the model's context window. Set
+`LEMONADE_CONTEXT_TOKENS` or `DM_MAX_OUTPUT_TOKENS` only when intentionally
+trading context or response length for resource use. Lemonade turns send
+`enable_thinking: false` by default; `DM_THINKING=1` opts into hidden reasoning.
+
 
 Prefer Ollama? The same model is committed as a Modelfile with the context
 and samplers baked in; build it and point the app at
@@ -53,9 +61,9 @@ stream per-layer embeddings, so they sit below their download size):
 | E2B | 4.3 GB | 4.5 GB | 128K | 56 tok/s | 3.4 s | ~7 s |
 | E4B | 6.1 GB | 3.2 GB | 128K | 44 tok/s | 3.8 s | ~9 s |
 | 12B | 7.2 GB | 7.7 GB | 256K | 21 tok/s | 11.5 s | ~9 s |
-| 26B MoE | 16 GB | 15 GB | 256K | 48 tok/s | 4.7 s | ~30 s |
+|| 26B MoE | 16 GB | 15 GB | 256K | 48 tok/s | 4.7 s | ~30 s |
 
-The app runs each model at its full native context window by default. Gemma 4
+The app runs each local model at its full native context window by default. Gemma 4
 uses sliding-window attention for most layers, so the KV cache stays small —
 the 12B measured ~7.6 GB of RAM even with 50K+ tokens of story in context.
 

@@ -15,6 +15,9 @@ falls through to the env var.
 | `OPENAI_COMPAT_BASE_URL` | `http://127.0.0.1:13305/v1` | New-story default URL for Lemonade/OpenAI-compatible chat |
 | `OPENAI_COMPAT_MODEL` | `Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6` | New-story default model for the Lemonade chat endpoint |
 | `LOCAL_TEXT_MAX_TOKENS` | `4096` | Max tokens generated per local turn |
+| `LEMONADE_CONTEXT_TOKENS` | `262144` | Full context window for the selected Lemonade Qwen model (256K); override only when intentionally trading context for prefill latency |
+| `DM_MAX_OUTPUT_TOKENS` | `2048` | Maximum generated tokens per DM turn; separate from the context window |
+| `DM_THINKING` | `0` for Lemonade | Set `1` to opt into hidden reasoning; leaving it off keeps voice/table turns responsive |
 | `LOCAL_TEXT_CONTEXT` | model max | Cap on the local context window |
 | `LOCAL_TEXT_TIMEOUT_MS` | `360000` | Local turn timeout (idle, resets per streamed chunk) |
 | `ARC_TEXT_TIMEOUT_MS` | `480000` | Timeout for story-arc generation/refresh and chapter summaries (non-streaming, whole reply must finish in time) |

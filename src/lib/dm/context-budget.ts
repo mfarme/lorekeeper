@@ -14,10 +14,9 @@
 // usual English approximation and errs slightly conservative for prose.
 export const CHARS_PER_TOKEN = 4;
 
-// Used when a campaign has no configured context limit. Deliberately modest:
-// overshooting a small local model's window truncates the prompt silently at
-// the server, which is far worse than packing less.
-export const DEFAULT_CONTEXT_TOKENS = 16_384;
+// The selected Lemonade Qwen model has a native 256K context window. Provider-specific
+// callers may pass a smaller explicit window for legacy backends.
+export const DEFAULT_CONTEXT_TOKENS = 262_144;
 
 // Reserved for the model's own reply plus per-message framing overhead the
 // estimate cannot see. Without this the prompt would be allowed to fill the
@@ -69,6 +68,9 @@ export type BlockTrace = {
 };
 
 export type ContextTrace = {
+  // Full model context window, including the reply reserve.
+  contextWindowTokens?: number;
+  // Prompt budget after reserving room for the model's reply.
   limitTokens: number;
   promptTokens: number;
   blocks: BlockTrace[];

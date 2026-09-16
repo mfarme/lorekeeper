@@ -11,6 +11,7 @@ import {
   readContextWindow,
 } from "@/lib/dm/context-probe-logic";
 import { serverEnv } from "@/lib/server-env";
+import { isLemonadeBaseUrl } from "@/lib/lemonade";
 import { localModelContextWindow } from "@/lib/text-models";
 
 // Shared chat-completion client for both providers:
@@ -19,9 +20,11 @@ import { localModelContextWindow } from "@/lib/text-models";
 // - local: Ollama /api/chat, streaming NDJSON
 // Used by the solo narrator (/api/story) and the campaign DM loop.
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 16_384;
+const DEFAULT_MAX_OUTPUT_TOKENS = 4_096;
+const DEFAULT_DM_MAX_OUTPUT_TOKENS = 2_048;
 const MAX_CONFIGURABLE_OUTPUT_TOKENS = 65_536;
 const DEFAULT_LOCAL_MAX_OUTPUT_TOKENS = 4_096;
+const DEFAULT_LEMONADE_CONTEXT_TOKENS = 262_144;
 const DEFAULT_CUSTOM_TEXT_TIMEOUT_MS = 3 * 60 * 1000;
 const DEFAULT_LOCAL_TEXT_TIMEOUT_MS = 6 * 60 * 1000;
 const MIN_TEXT_TIMEOUT_MS = 30 * 1000;
@@ -79,14 +82,22 @@ export type ChatRequestOptions = {
   // it off that backend entirely. Reasoning deltas never reach onDelta: the
   // stream parser forwards only delta.content.
   thinking?: boolean;
+  // Per-call output ceiling. DM turns set a smaller conversational default;
+  // generic compatible-server callers use configuredMaxOutputTokens().
+  maxOutputTokens?: number;
   // Body fields a previous attempt was rejected for, omitted on the retry.
   // Set only by requestCustomMessage's own unsupported-parameter path; no
   // caller outside this module should populate it.
   dropParams?: readonly string[];
 };
 
-export function configuredMaxOutputTokens() {
-  const raw = serverEnv("OPENROUTER_MAX_TOKENS");
+export function configuredMaxOutputTokens(override?: number) {
+  const raw =
+    override === undefined
+      ? serverEnv("LEMONADE_MAX_OUTPUT_TOKENS") ||
+        serverEnv("OPENAI_COMPAT_MAX_TOKENS") ||
+        serverEnv("OPENROUTER_MAX_TOKENS")
+      : String(override);
   const parsed = Number.parseInt(raw, 10);
 
   if (!Number.isFinite(parsed)) {
@@ -96,8 +107,18 @@ export function configuredMaxOutputTokens() {
   return Math.max(512, Math.min(parsed, MAX_CONFIGURABLE_OUTPUT_TOKENS));
 }
 
-export function localMaxOutputTokens() {
-  const parsed = Number.parseInt(serverEnv("LOCAL_TEXT_MAX_TOKENS"), 10);
+export function dmMaxOutputTokens() {
+  const raw = serverEnv("DM_MAX_OUTPUT_TOKENS");
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_DM_MAX_OUTPUT_TOKENS;
+  }
+  return Math.max(512, Math.min(parsed, MAX_CONFIGURABLE_OUTPUT_TOKENS));
+}
+
+export function localMaxOutputTokens(override?: number) {
+  const raw = override === undefined ? serverEnv("LOCAL_TEXT_MAX_TOKENS") : String(override);
+  const parsed = Number.parseInt(raw, 10);
 
   if (!Number.isFinite(parsed)) {
     return DEFAULT_LOCAL_MAX_OUTPUT_TOKENS;
@@ -153,6 +174,20 @@ export function storyContextTokens(settings: {
   const probed = probedContextWindows.get(
     contextCacheKey(settings.customBaseUrl ?? "", settings.customModel ?? ""),
   );
+  if (isLemonadeBaseUrl(settings.customBaseUrl ?? "")) {
+    // Lemonade exposes the selected Qwen model's full 256K native slot. Keep
+    // this configurable for operators who intentionally trade context for
+    // prefill latency, but do not silently fall back to the old 16K budget.
+    const configured = Number.parseInt(
+      serverEnv("LEMONADE_CONTEXT_TOKENS", String(DEFAULT_LEMONADE_CONTEXT_TOKENS)),
+      10,
+    );
+    const limit = Number.isFinite(configured) && configured > 0
+      ? Math.max(2_048, configured)
+      : DEFAULT_LEMONADE_CONTEXT_TOKENS;
+    const observed = probed ? Math.max(2_048, probed) : limit;
+    return Math.min(observed, limit);
+  }
   return probed ? Math.max(2_048, probed) : DEFAULT_CUSTOM_CONTEXT_TOKENS;
 }
 
@@ -490,8 +525,10 @@ export async function requestCustomMessage(
     // it from config. Skipped on backends with no preset to override, where
     // 0 is already the default and reasoning models reject the field.
     ...(caps.sendZeroPresencePenalty ? { presence_penalty: 0 } : {}),
-    ...(caps.allowTemplateKwargs && options.thinking
-      ? { chat_template_kwargs: { enable_thinking: true } }
+    ...(caps.allowTemplateKwargs &&
+    options.thinking !== undefined &&
+    (options.thinking || isLemonadeBaseUrl(trimmedBase))
+      ? { chat_template_kwargs: { enable_thinking: options.thinking } }
       : {}),
     ...(onDelta ? { stream: true } : {}),
   };
@@ -505,7 +542,7 @@ export async function requestCustomMessage(
       ? "max_completion_tokens"
       : "max_tokens";
   if (!dropped.has(maxTokensField)) {
-    requestPayload[maxTokensField] = configuredMaxOutputTokens();
+    requestPayload[maxTokensField] = configuredMaxOutputTokens(options.maxOutputTokens);
   }
 
   for (const field of dropped) {
@@ -747,7 +784,7 @@ export async function requestLocalMessage(
     keep_alive: "30m",
     options: {
       temperature: temperature ?? 0.9,
-      num_predict: localMaxOutputTokens(),
+      num_predict: localMaxOutputTokens(options.maxOutputTokens),
       num_ctx: localContextTokens(model),
     },
   };

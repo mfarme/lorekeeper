@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { ui } from "@/lib/ui";
 import type { BlockKind, ContextTrace } from "@/lib/dm/context-budget";
+import { RESPONSE_RESERVE_TOKENS } from "@/lib/dm/context-budget";
 
 // "What the DM was actually sent." Lead only, because the underlying prompt
 // carries DM-only facts and the secret story arc; see the route for why even
@@ -131,7 +132,7 @@ export function ContextPanel({ campaignId }: { campaignId: string }) {
           <div>
             <div className="mb-1 flex justify-between font-mono text-[11px] text-stone-400">
               <span>
-                {trace.promptTokens.toLocaleString()} / {trace.limitTokens.toLocaleString()} tokens
+                {trace.promptTokens.toLocaleString()} / {trace.limitTokens.toLocaleString()} usable tokens
               </span>
               <span className={over ? "text-red-400" : "text-stone-500"}>{pct}%</span>
             </div>
@@ -142,6 +143,10 @@ export function ContextPanel({ campaignId }: { campaignId: string }) {
               />
             </div>
           </div>
+          <p className="text-[10px] text-stone-600">
+            Model context: {(trace.contextWindowTokens ?? trace.limitTokens + RESPONSE_RESERVE_TOKENS).toLocaleString()} tokens;
+            {RESPONSE_RESERVE_TOKENS.toLocaleString()} reserved for the reply.
+          </p>
 
           <ul className="space-y-1">
             {trace.blocks.map((block) => (

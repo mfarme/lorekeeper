@@ -11,7 +11,7 @@ import {
 } from "@/lib/db/campaigns";
 import { countMessages, insertCampaignMessage, listRecentMessages } from "@/lib/db/messages";
 import { getSheetForUser, listSheets } from "@/lib/db/sheets";
-import { requestDmTurn } from "@/lib/dm/loop";
+import { requestDmTurn, dmTurnBusy } from "@/lib/dm/loop";
 import { coverInEffect } from "@/lib/dm/delegation";
 import { hasHumanDm } from "@/lib/dm/viewer";
 import { enqueueDmJob } from "@/lib/dm/queue";
@@ -53,6 +53,13 @@ export async function POST(
   }
 
   const { kind } = parsed.data;
+
+  if (kind !== "ooc" && dmTurnBusy(campaignId)) {
+    return Response.json(
+      { error: "The Dungeon Master is still working on the previous turn. Use OOC for table talk." },
+      { status: 409 },
+    );
+  }
 
   // Floor control: during a spotlight only the named players may act (ooc is
   // always allowed); the floor releases once ALL of them have answered.

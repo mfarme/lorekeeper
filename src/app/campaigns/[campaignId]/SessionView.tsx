@@ -271,8 +271,17 @@ export function SessionView({
   const muted = Boolean(state.members.find((member) => member.userId === meId)?.muted);
   const gate = useMemo(
     () =>
-      composerGate({ floor, sheets, meUserId: meId, kind, myName, leadPrivate, openingNarrationPlaying }),
-    [floor, sheets, meId, kind, myName, leadPrivate, openingNarrationPlaying],
+      composerGate({
+        floor,
+        sheets,
+        meUserId: meId,
+        kind,
+        myName,
+        leadPrivate,
+        openingNarrationPlaying,
+        dmStatus,
+      }),
+    [floor, sheets, meId, kind, myName, leadPrivate, openingNarrationPlaying, dmStatus],
   );
   // A mid-game joiner without a character is gated to creation first. The DM
   // runs no character, so the gate must never catch them.

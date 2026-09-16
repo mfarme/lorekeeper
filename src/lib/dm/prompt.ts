@@ -40,6 +40,7 @@ import { renderChapterLod } from "@/lib/dm/chapter-lod";
 import { buildPinnedMemoriesBlock } from "@/lib/dm/pin-logic";
 import {
   computeBudgets,
+  DEFAULT_CONTEXT_TOKENS,
   estimateTokens,
   fitHistory,
   usableTokens,
@@ -1222,6 +1223,7 @@ export function buildDmMessages(
   // rather than to gate them. History is the one kind actually trimmed, and
   // its cut is reported above.
   state.contextTrace = {
+    contextWindowTokens: state.contextLimitTokens ?? DEFAULT_CONTEXT_TOKENS,
     limitTokens: usableTokens(state.contextLimitTokens),
     promptTokens:
       estimateTokens(systemParts.join("\n\n")) +

@@ -1,3 +1,4 @@
+import type { DmStatusState } from "@/lib/dm/status";
 import { isFloorExempt } from "@/lib/campaign-types";
 import type { InputKind } from "@/app/campaigns/[campaignId]/Composer";
 import type { Floor } from "@/lib/db/campaigns";
@@ -20,6 +21,7 @@ export function composerGate({
   myName,
   leadPrivate,
   openingNarrationPlaying,
+  dmStatus,
 }: {
   floor: Floor;
   sheets: CharacterSheet[];
@@ -29,6 +31,8 @@ export function composerGate({
   leadPrivate: boolean;
   // The campaign's first DM passage is being read aloud to this user.
   openingNarrationPlaying: boolean;
+  // Model-bound input waits for the current turn; OOC remains available.
+  dmStatus: DmStatusState;
 }) {
   const exempt = isFloorExempt(kind);
   const spotlighted =
@@ -57,8 +61,17 @@ export function composerGate({
   // exactly the kind of thing someone wants to ask while it plays, and the
   // Ask strip is never blocked, so this only has to spare OOC.
   const narrationBlocked = openingNarrationPlaying && kind !== "ooc";
-  const inputBlocked = floorBlocked || holdBlocked || initiativeBlocked || narrationBlocked;
-  const placeholder = narrationBlocked
+  const dmBusy = dmStatus !== "idle" && kind !== "ooc";
+  const inputBlocked = floorBlocked || holdBlocked || initiativeBlocked || narrationBlocked || dmBusy;
+  const busyPlaceholder =
+    dmStatus === "awaiting_rolls"
+      ? "Waiting on the party's dice... (OOC still open)"
+      : dmStatus === "rolling"
+        ? "The Dungeon Master is rolling... (OOC still open)"
+        : "The Dungeon Master is working... (OOC still open)";
+  const placeholder = dmBusy
+    ? busyPlaceholder
+    : narrationBlocked
     ? "The Dungeon Master is setting the scene... (OOC still open)"
     : holdBlocked
       ? "The party lead has the floor held for discussion... (OOC still open)"

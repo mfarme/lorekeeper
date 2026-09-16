@@ -22,6 +22,10 @@ function requested() {
   return (globalThis.__odmTurnRequested ??= new Set<string>());
 }
 
+export function dmTurnBusy(campaignId: string): boolean {
+  return requested().has(campaignId) || getDmStatus(campaignId) !== "idle";
+}
+
 // Coalesces DM turns so rapid-fire player actions cannot pile up N full
 // turns on the queue. A turn reads the whole message history when it starts,
 // so one pending turn answers every action that arrived before it began;

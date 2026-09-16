@@ -198,6 +198,9 @@ export type CampaignState = {
   safetyPause: { at: number; reason: "x_card" } | null;
   narrationAudio: Record<string, string>;
   latestTts: { messageId: string; url: string; seq: number } | null;
+  // Live completions are queued so several TTS jobs resolving in one React
+  // batch cannot overwrite each other before useTableAudio observes them.
+  ttsReadyQueue: Array<{ messageId: string; url: string; seq: number }>;
   latestRoll: { roll: StoredRoll; source: string; seq: number } | null;
   lastSeq: number;
   dmStatus: DmStatus;
@@ -300,6 +303,7 @@ const initialState: CampaignState = {
   safetyPause: null,
   narrationAudio: {},
   latestTts: null,
+  ttsReadyQueue: [],
   latestRoll: null,
   lastSeq: 0,
   dmStatus: "idle",
@@ -497,6 +501,10 @@ function reducer(state: CampaignState, action: Action): CampaignState {
           if (messageId && url) {
             next.narrationAudio = { ...state.narrationAudio, [messageId]: url };
             next.latestTts = { messageId, url, seq: action.seq ?? 0 };
+            next.ttsReadyQueue = [
+              ...state.ttsReadyQueue,
+              { messageId, url, seq: action.seq ?? 0 },
+            ].slice(-50);
             next.mediaStatus = withoutKey(state.mediaStatus, messageId);
           }
           return next;
@@ -993,6 +1001,7 @@ export function useCampaignStream(campaignId: string) {
           dmStatus: data.dmStatus ?? "idle",
           utilityCalls: sortCalls(data.utilityCalls ?? []),
           narrationAudio: data.narrationAudio ?? {},
+          ttsReadyQueue: [],
           ambience: data.ambience ?? EMPTY_AMBIENCE,
           lastSeq,
         },

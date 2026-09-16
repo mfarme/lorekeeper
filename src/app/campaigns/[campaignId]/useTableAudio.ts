@@ -27,9 +27,9 @@ export function useTableAudio(state: CampaignState) {
   // Each narration is handed over exactly once: unrelated events (new chat
   // messages) must never re-trigger and restart playback.
   const mountSeqRef = useRef<number | null>(null);
-  const handedTtsRef = useRef<string | null>(null);
-  const { latestTts, loading, lastSeq } = state;
+  const { ttsReadyQueue, loading, lastSeq } = state;
   const { onTtsReady } = narration;
+  const handedTtsRef = useRef(new Set<string>());
   useEffect(() => {
     if (mountSeqRef.current === null) {
       if (!loading) {
@@ -37,11 +37,14 @@ export function useTableAudio(state: CampaignState) {
       }
       return;
     }
-    if (latestTts && latestTts.messageId !== handedTtsRef.current) {
-      handedTtsRef.current = latestTts.messageId;
-      onTtsReady(latestTts.messageId, latestTts.url, latestTts.seq > mountSeqRef.current);
+    for (const ready of ttsReadyQueue) {
+      if (handedTtsRef.current.has(ready.messageId)) {
+        continue;
+      }
+      handedTtsRef.current.add(ready.messageId);
+      onTtsReady(ready.messageId, ready.url, ready.seq > mountSeqRef.current);
     }
-  }, [latestTts, onTtsReady, loading, lastSeq]);
+  }, [ttsReadyQueue, onTtsReady, loading, lastSeq]);
 
   return { narration, ambience };
 }

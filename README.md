@@ -477,23 +477,24 @@ Lemonade also serves the companion media endpoints from the same port:
 - `/v1/audio/transcriptions` with `Moonshine-Medium-Streaming`
 - `/v1/images/generations` with `Z-Image-Turbo-TheNoise`
 
-### Tool calls need thinking mode
+### Low-latency Qwen defaults
 
-This is the setting that matters most for a working table, and it is not obvious.
-Under a long DM prompt, Qwen3.6 in non-thinking mode can narrate fights instead
-of starting an encounter or calling `request_roll`. The app sends
-`chat_template_kwargs: { enable_thinking: true }` on tool-decision calls and
-keeps final narration non-thinking so it streams smoothly. Set `DM_THINKING=0`
-only as a fallback when tool fidelity is not needed.
+The Lemonade path sends `chat_template_kwargs: { enable_thinking: false }`
+by default. This prevents Qwen3.6 from spending the turn in hidden reasoning
+before it emits a tool or narration token. Set `DM_THINKING=1` only when you
+have measured that a particular campaign benefits from the slower reasoning
+path.
+
+The app keeps the **input context** at the model's native 256K budget
+(`LEMONADE_CONTEXT_TOKENS=262144`) while bounding each conversational DM
+response to `DM_MAX_OUTPUT_TOKENS=2048` by default. These are different knobs:
+large memory, short table replies.
 
 ### Reasoning budget and latency
 
-Left uncapped, a reasoning-enabled decision call can occasionally spiral for minutes
-on a hard turn. Cap the reasoning budget on the server to roughly 1024-2048 tokens
-(llama-server's `--reasoning-budget`, or the equivalent key in the preset INI).
-Expect the tradeoff: tool-decision calls run about 50-100s and a full turn about
-1.5-3 minutes on a single local GPU. Combat and multi-tool turns sit at the longer
-end.
+If `DM_THINKING=1` is enabled, cap the server's reasoning budget separately to
+roughly 1024–2048 tokens. Otherwise hidden reasoning can make a simple table
+turn look like a stalled application.
 
 ### presence_penalty
 
@@ -510,9 +511,9 @@ screen. Breaking dice rolling should not be one checkbox away.
 ### The same model on other LLM software
 
 The setup is pure settings, so it ports to any OpenAI-compatible server with tool
-calling. The key settings to replicate anywhere: **context 65536, temperature 0.7,
-top-p 0.95, top-k 20, min-p 0, presence_penalty 0**, plus a way to enable reasoning
-for tool calls. Then point the app at your server (admin panel, campaign Text Model
+calling. The key settings to replicate anywhere: **context 262144, temperature 0.9,
+top-p 0.95, top-k 20, min-p 0, presence_penalty 0**, with thinking disabled for
+low-latency turns. Then point the app at your server (admin panel, campaign Text Model
 settings, or `OPENAI_COMPAT_BASE_URL`). For Ollama, the committed
 [Modelfile](models/qwen3.6-dm.Modelfile) bakes the same settings in:
 

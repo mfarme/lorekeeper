@@ -2,7 +2,7 @@ import { isErrorResponse, requireStoryAuthority } from "@/lib/campaign-api";
 import { LEAD_NOTE_PREFIX } from "@/lib/campaign-types";
 import { allocateSeq } from "@/lib/db/campaigns";
 import { insertCampaignMessage } from "@/lib/db/messages";
-import { requestDmTurn } from "@/lib/dm/loop";
+import { requestDmTurn, dmTurnBusy } from "@/lib/dm/loop";
 import { publishWithSeq } from "@/lib/events";
 
 export const runtime = "nodejs";
@@ -29,6 +29,12 @@ export async function POST(
     return Response.json({ error: "Write the direction first." }, { status: 400 });
   }
   const wake = raw?.wake !== false;
+  if (wake && dmTurnBusy(campaignId)) {
+    return Response.json(
+      { error: "The Dungeon Master is still working on the previous turn." },
+      { status: 409 },
+    );
+  }
 
   const seq = allocateSeq(campaignId);
   const message = insertCampaignMessage({
