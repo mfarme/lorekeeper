@@ -73,7 +73,7 @@ export type ChatRequestOptions = {
   timeoutMs?: number;
   // Ask the backend for reasoning/thinking mode on this call. Qwen-family
   // models are unreliable tool callers without it under long prompts
-  // (measured ~1/5 request_roll without vs ~4/5 with on qwen3.6-35b);
+  // (measured ~1/5 request_roll without vs ~4/5 with on Qwen3.6);
   // llama.cpp and vLLM honor chat_template_kwargs, and OpenRouter ignores
   // the unknown field. OpenAI answers 400 for it, so describeEndpoint keeps
   // it off that backend entirely. Reasoning deltas never reach onDelta: the

@@ -6,13 +6,20 @@ import { stripToolText } from "@/lib/dm/tool-text";
 import { enqueueMediaJob } from "@/lib/media-queue";
 import { TTS_VOICES } from "@/lib/tts-voices";
 import { configValue, getGlobalConfig } from "@/lib/app-config";
+import {
+  DEFAULT_LEMONADE_TTS_MODEL,
+  isLemonadeBaseUrl,
+  lemonadeBaseUrl,
+} from "@/lib/lemonade";
+import { serverEnv } from "@/lib/server-env";
 import { listNpcs } from "@/lib/db/npcs";
 import type { Speaker } from "@/lib/dm/speech";
 import { planSpeech, type CastVoice } from "@/lib/tts-segments";
 
-// Narration TTS via the local Kokoro-FastAPI service (:8880). Audio is
-// rendered on the media queue's own "tts" lane after a DM message persists,
-// so narration never waits behind a ComfyUI render, saved under
+// Narration TTS uses Lemonade's OpenAI-compatible audio endpoint by default.
+// A legacy standalone Kokoro-FastAPI URL remains supported through KOKORO_URL.
+// Audio is rendered on the media queue's own "tts" lane after a DM message
+// persists, so narration never waits behind a ComfyUI render, saved under
 // public/generated-audio, and announced with a tts_ready event that clients
 // autoplay (latest-only) with per-user mute.
 
@@ -49,15 +56,28 @@ function chunkSentences(text: string): string[] {
 }
 
 async function kokoroSpeech(input: string, voice: string, speed = 1): Promise<Buffer> {
-  const base = configValue(getGlobalConfig().speech.kokoroUrl, "KOKORO_URL", "http://127.0.0.1:8880");
+  const base = configValue(
+    getGlobalConfig().speech.kokoroUrl,
+    "KOKORO_URL",
+    lemonadeBaseUrl(),
+  ).replace(/\/+$/, "");
+  const lemonade = isLemonadeBaseUrl(base);
   const response = await fetch(`${base}/v1/audio/speech`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "kokoro", voice, input, response_format: "mp3", ...(speed !== 1 ? { speed } : {}) }),
+    body: JSON.stringify({
+      model: lemonade
+        ? serverEnv("LEMONADE_TTS_MODEL", DEFAULT_LEMONADE_TTS_MODEL)
+        : serverEnv("KOKORO_MODEL", "kokoro"),
+      voice,
+      input,
+      response_format: "mp3",
+      ...(speed !== 1 ? { speed } : {}),
+    }),
     signal: AbortSignal.timeout(180_000),
   });
   if (!response.ok) {
-    throw new Error(`Kokoro TTS failed: HTTP ${response.status}`);
+    throw new Error(`TTS failed: HTTP ${response.status}`);
   }
   return Buffer.from(await response.arrayBuffer());
 }

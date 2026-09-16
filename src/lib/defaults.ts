@@ -1,4 +1,8 @@
 import { DEFAULT_LOCAL_TEXT_MODEL } from "@/lib/text-models";
+import {
+  DEFAULT_LEMONADE_BASE_URL,
+  DEFAULT_LEMONADE_TEXT_MODEL,
+} from "@/lib/lemonade";
 import type { StorySettings } from "@/lib/types";
 
 export const DEFAULT_CHAT_TITLE = "Untitled story";
@@ -8,17 +12,15 @@ export const DEFAULT_STORY_SETTINGS: StorySettings = {
     "A grounded interactive fiction scene with sharp dialogue, human stakes, and space for the player to steer the story.",
   style:
     "Classic text-adventure narration: direct second person, vivid but restrained prose, natural dialogue, and no purple exposition.",
-  // Default DM model is Qwen3.6-35B MoE Q8 served by llama-server (llama.cpp
-  // router mode) on :8001 via its OpenAI-compatible /v1 endpoint (tool
-  // calling verified). Context size and samplers live in the llama-server
-  // preset INI, not here. The legacy Ollama-native "local" provider stays
-  // selectable. Any API key comes from .env.server, never code; llama-server
-  // ignores auth headers.
+  // Default DM model is the user's Lemonade/lemond stack on :13305 via its
+  // OpenAI-compatible /v1 endpoint. The legacy llama.cpp :8001 shape remains
+  // configurable through the campaign/admin settings. Context size and
+  // samplers live in Lemonade's model recipe, not in domain state. Any API key
+  // comes from .env.server, never code.
   textProvider: "custom",
   localTextModel: DEFAULT_LOCAL_TEXT_MODEL,
-  customBaseUrl: "http://127.0.0.1:8001/v1",
-  // qwen3.6-35b = the llama-server router preset for qwen3.6-35b-a3b Q8.
-  customModel: "qwen3.6-35b",
+  customBaseUrl: `${DEFAULT_LEMONADE_BASE_URL}/v1`,
+  customModel: DEFAULT_LEMONADE_TEXT_MODEL,
   customApiKey: "",
   // OFF by default: a second model is a hardware luxury, so the shipped
   // default keeps everything on the story model. Set utilityModel in the
@@ -31,11 +33,10 @@ export const DEFAULT_STORY_SETTINGS: StorySettings = {
   utilityBaseUrl: "",
   utilityApiKey: "",
   imageMode: "fast",
-  // This machine (AMD gfx1151) can't run the bundled mflux/sdnq workers, so
-  // route images through the local ComfyUI (empty comfyUrl falls back to
-  // COMFYUI_URL / http://127.0.0.1:8188). Pin the SDXL checkpoint so adding
-  // other models to ComfyUI can't shift the auto-selected checkpoints[0].
-  imageBackend: "comfyui",
+  // The Lemonade image endpoint implements the OpenAI-compatible generation
+  // contract, so it is the primary local backend for this fork. ComfyUI and
+  // hosted OpenAI-compatible services remain selectable per campaign.
+  imageBackend: "openai",
   comfyUrl: "",
   comfyCheckpoint: "CyberRealisticXLPlay_V6.0.safetensors",
   aspect: "square",

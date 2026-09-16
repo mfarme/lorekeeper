@@ -100,8 +100,9 @@ export type StorySettings = {
   imageMode: ImageMode;
   imageBackend: ImageBackend;
   // ComfyUI backend: server URL and checkpoint filename. Both optional —
-  // URL falls back to COMFYUI_URL env then http://127.0.0.1:8188, and an
-  // empty checkpoint uses the first one ComfyUI reports.
+  // URL falls back to COMFYUI_URL then http://127.0.0.1:8188. The `openai`
+  // backend uses its OpenAI-compatible base/model settings (Lemonade by
+  // default), so these fields are ignored for that backend.
   comfyUrl: string;
   comfyCheckpoint: string;
   aspect: AspectPreset;

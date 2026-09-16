@@ -61,7 +61,7 @@ export const globalConfigSchema = z.object({
     .object({
       // "none" is an explicit "this server has no AI DM": campaigns default
       // to a human DM and the story path fails fast with a plain message
-      // instead of dialing the shipped 127.0.0.1:8001 default.
+      // instead of dialing the configured Lemonade default.
       provider: z.enum(["", "local", "custom", "none"]).default(""),
       localTextModel: z.string().trim().max(200).default(""),
       customBaseUrl: z.string().trim().max(500).default(""),
@@ -79,17 +79,18 @@ export const globalConfigSchema = z.object({
   images: z
     .object({
       // Server-wide default backend for new campaigns. Blank = the
-      // DEFAULT_IMAGE_BACKEND env var, then the built-in default (ComfyUI).
+      // DEFAULT_IMAGE_BACKEND env var, then Lemonade's local OpenAI-compatible
+      // image endpoint.
       defaultBackend: z
         .enum(["", "comfyui", "openai", "mflux-hs", "sdnq-hs"])
         .default(""),
       comfyUrl: z.string().trim().max(500).default(""),
       comfyCheckpoint: z.string().trim().max(300).default(""),
       fluxWorkerUrl: z.string().trim().max(500).default(""),
-      // The "openai" backend: any OpenAI-compatible images API. The key is
-      // the server owner's, applied at request time only, and never leaves
-      // the server (masked like the Discord secret on the way to the admin
-      // UI). Blank model = gpt-image-1.
+      // The "openai" backend: any OpenAI-compatible images API, including
+      // Lemonade's local /v1 endpoint. The key is the server owner's when the
+      // selected endpoint needs one; Lemonade does not. Blank model uses
+      // Z-Image-Turbo-TheNoise for Lemonade and gpt-image-1 otherwise.
       openaiBaseUrl: z.string().trim().max(500).default(""),
       openaiModel: z.string().trim().max(200).default(""),
       openaiApiKey: z.string().trim().max(400).default(""),

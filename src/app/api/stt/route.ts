@@ -1,14 +1,14 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { configValue, getGlobalConfig } from "@/lib/app-config";
-import { serverEnv } from "@/lib/server-env";
+import { transcribeAudio } from "@/lib/stt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
-// Proxies push-to-talk audio to the local faster-whisper service
-// (odm-stt.service on :8870), keeping the service itself off the network.
+// Proxies push-to-talk audio to the configured transcription service, with
+// browser WebM normalized to PCM16 WAV when the service is Lemonade. Keeping
+// the model endpoint server-side prevents browser access to the inference plane.
 export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) {
@@ -24,29 +24,12 @@ export async function POST(request: Request) {
     return Response.json({ error: "Recording too long." }, { status: 413 });
   }
 
-  const sttUrl = configValue(getGlobalConfig().speech.sttUrl, "STT_URL", "http://127.0.0.1:8870");
-  const upstream = new FormData();
-  upstream.set("file", audio, audio.name || "speech.webm");
-  upstream.set("model", serverEnv("STT_MODEL", "distil-large-v3"));
-
-  try {
-    const response = await fetch(`${sttUrl}/v1/audio/transcriptions`, {
-      method: "POST",
-      body: upstream,
-      signal: AbortSignal.timeout(120_000),
-    });
-    if (!response.ok) {
-      return Response.json(
-        { error: "The speech service could not transcribe that." },
-        { status: 502 },
-      );
-    }
-    const data = (await response.json()) as { text?: string };
-    return Response.json({ text: (data.text ?? "").trim() });
-  } catch {
+  const transcribed = await transcribeAudio(audio, audio.name || "speech.webm");
+  if ("error" in transcribed) {
     return Response.json(
-      { error: "Speech service unreachable. Is odm-stt running on this server?" },
+      { error: transcribed.error },
       { status: 502 },
     );
   }
+  return Response.json({ text: transcribed.text });
 }

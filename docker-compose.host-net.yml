@@ -1,5 +1,6 @@
 # Linux-only override: share the host network stack so the container reaches
-# llama.cpp, ComfyUI, Kokoro and STT on 127.0.0.1 exactly as a host install does.
+# Lemonade, ComfyUI and any legacy speech services on 127.0.0.1 exactly as a
+# host install does.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.host-net.yml up -d
 #
@@ -13,8 +14,13 @@ services:
     ports: !reset []
     extra_hosts: !reset []
     environment:
-      OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-http://127.0.0.1:8001/v1}
+      LEMONADE_BASE_URL: ${LEMONADE_BASE_URL:-http://127.0.0.1:13305}
+      OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-http://127.0.0.1:13305/v1}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://127.0.0.1:11434}
       COMFYUI_URL: ${COMFYUI_URL:-http://127.0.0.1:8188}
-      KOKORO_URL: ${KOKORO_URL:-http://127.0.0.1:8880}
-      STT_URL: ${STT_URL:-http://127.0.0.1:8870}
+      KOKORO_URL: ${KOKORO_URL:-}
+      STT_URL: ${STT_URL:-}
+      LEMONADE_TEXT_MODEL: ${LEMONADE_TEXT_MODEL:-Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6}
+      LEMONADE_TTS_MODEL: ${LEMONADE_TTS_MODEL:-kokoro-v1}
+      LEMONADE_STT_MODEL: ${LEMONADE_STT_MODEL:-Moonshine-Medium-Streaming}
+      LEMONADE_IMAGE_MODEL: ${LEMONADE_IMAGE_MODEL:-Z-Image-Turbo-TheNoise}

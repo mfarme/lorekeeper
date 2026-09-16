@@ -40,14 +40,21 @@ function utilityConfigured({ utilityModel = "" }) {
 }
 
 // Mirrors imagesConfigured / imagesProbeUrl in src/lib/capabilities.ts.
-function imagesConfigured(backend, hasOpenaiKey, explicitUrl, defaultReachable) {
+function imagesConfigured(backend, hasOpenaiKey, explicitUrl, defaultReachable, localOpenaiCompatible = false) {
   if (backend === "openai") {
-    return hasOpenaiKey;
+    return hasOpenaiKey || localOpenaiCompatible;
   }
   return Boolean(explicitUrl.trim()) || defaultReachable;
 }
 
-function imagesProbeUrl(backend, comfyBaseUrl, fluxWorkerUrl) {
+function normalizeLemonadeBaseUrl(value) {
+  return value.trim().replace(/\/+$/, "").replace(/\/v\d+$/, "");
+}
+
+function imagesProbeUrl(backend, comfyBaseUrl, fluxWorkerUrl, openaiBaseUrl = "") {
+  if (backend === "openai" && normalizeLemonadeBaseUrl(openaiBaseUrl) === "http://127.0.0.1:13305") {
+    return "http://127.0.0.1:13305/v1/health";
+  }
   if (backend === "comfyui") {
     return `${comfyBaseUrl.replace(/\/+$/, "")}/system_stats`;
   }
@@ -76,7 +83,10 @@ function storyProbeUrl({ textProvider, customBaseUrl = "" }, ollamaBaseUrl) {
 }
 
 function ttsProbeUrl(kokoroBaseUrl) {
-  return `${kokoroBaseUrl.replace(/\/+$/, "")}/health`;
+  const base = kokoroBaseUrl.replace(/\/+$/, "");
+  return normalizeLemonadeBaseUrl(base) === "http://127.0.0.1:13305"
+    ? "http://127.0.0.1:13305/v1/health"
+    : `${base}/health`;
 }
 
 let failures = 0;
@@ -154,13 +164,12 @@ check("an empty utility model means the utility lane is off", () => {
   assert.equal(utilityConfigured({ utilityModel: "gemma4:e4b-it-qat" }), true);
 });
 
-// Self-hosted image backends resolve to a default URL even when nothing was
-// configured, so only the key-gated OpenAI backend can be positively absent.
-// A fresh install defaults to ComfyUI with nothing listening on :8188. That
-// must read as "no image AI", or every upload-or-paint control keeps offering
-// a paint button that fails, and every new character reports a failed portrait.
-check("openai images need a key; self-hosted backends need a URL or a live default", () => {
+// Hosted OpenAI-compatible image backends need a key. Lemonade is local and
+// uses the same API without authentication; the other self-hosted backends
+// retain their explicit-url/live-default behavior.
+check("hosted images need a key; Lemonade does not", () => {
   assert.equal(imagesConfigured("openai", false, "", true), false);
+  assert.equal(imagesConfigured("openai", false, "", false, true), true);
   assert.equal(imagesConfigured("openai", true, "", false), true);
   for (const backend of ["comfyui", "mflux-hs", "sdnq-hs"]) {
     assert.equal(imagesConfigured(backend, false, "", false), false, `${backend} bare default`);
@@ -181,7 +190,16 @@ check("the image probe hits ComfyUI's system_stats or the FLUX worker's health",
   );
   assert.equal(imagesProbeUrl("mflux-hs", "", "http://127.0.0.1:7869"), "http://127.0.0.1:7869/health");
   assert.equal(imagesProbeUrl("sdnq-hs", "", "http://127.0.0.1:7869/"), "http://127.0.0.1:7869/health");
-  assert.equal(imagesProbeUrl("openai", "http://127.0.0.1:8188", "http://127.0.0.1:7869"), "");
+  assert.equal(
+    imagesProbeUrl(
+      "openai",
+      "http://127.0.0.1:8188",
+      "http://127.0.0.1:7869",
+      "http://127.0.0.1:13305/v1",
+    ),
+    "http://127.0.0.1:13305/v1/health",
+  );
+  assert.equal(imagesProbeUrl("openai", "http://127.0.0.1:8188", "http://127.0.0.1:7869", "https://api.openai.com/v1"), "");
 });
 
 // The enqueue sites must ask before they promise a picture; otherwise a
@@ -282,7 +300,9 @@ check("the story probe sends the backend's key, admin key first", () => {
   );
 });
 
-check("the tts probe hits Kokoro's health endpoint", () => {
+check("the tts probe uses Lemonade health or legacy Kokoro health", () => {
+  assert.equal(ttsProbeUrl("http://127.0.0.1:13305"), "http://127.0.0.1:13305/v1/health");
+  assert.equal(ttsProbeUrl("http://127.0.0.1:13305/v1/"), "http://127.0.0.1:13305/v1/health");
   assert.equal(ttsProbeUrl("http://127.0.0.1:8880"), "http://127.0.0.1:8880/health");
   assert.equal(ttsProbeUrl("http://127.0.0.1:8880/"), "http://127.0.0.1:8880/health");
 });

@@ -477,8 +477,8 @@ export function AdminSettingsPanel() {
             label="Default backend"
             hint={
               phoneWorld
-                ? "For new campaigns. The OpenAI API renders in the cloud with the key below and needs no GPU."
-                : "For new campaigns. ComfyUI and the FLUX workers run on this machine; the OpenAI API renders in the cloud with the key below and needs no GPU."
+                ? "For new campaigns. Lemonade serves local OpenAI-compatible image generation without a key; hosted endpoints need the key below."
+                : "For new campaigns. Lemonade serves local OpenAI-compatible image generation without a key; ComfyUI and FLUX workers remain available as alternatives."
             }
           >
             <select
@@ -494,9 +494,9 @@ export function AdminSettingsPanel() {
                 })
               }
             >
-              <option value="">Auto ({env.imageBackend || "ComfyUI"})</option>
+              <option value="">Auto ({env.imageBackend || "Lemonade (OpenAI-compatible)"})</option>
               {phoneWorld ? null : <option value="comfyui">ComfyUI (local)</option>}
-              <option value="openai">OpenAI API (cloud, needs key)</option>
+              <option value="openai">OpenAI-compatible API (Lemonade local or hosted)</option>
               {phoneWorld ? null : (
                 <option value="mflux-hs">FLUX worker: mflux (Apple Silicon)</option>
               )}
@@ -549,7 +549,10 @@ export function AdminSettingsPanel() {
               />
             </Field>
           )}
-          <Field label="OpenAI image model" hint="Blank = gpt-image-1.">
+          <Field
+            label="OpenAI-compatible image model"
+            hint="Blank = Z-Image-Turbo-TheNoise on Lemonade, or gpt-image-1 on a hosted OpenAI endpoint."
+          >
             <input
               className={ui.input}
               value={config.images.openaiModel}
@@ -559,12 +562,12 @@ export function AdminSettingsPanel() {
                   images: { ...config.images, openaiModel: event.target.value },
                 })
               }
-              placeholder="gpt-image-1"
+              placeholder="Z-Image-Turbo-TheNoise"
             />
           </Field>
           <Field
-            label="OpenAI base URL"
-            hint="Only for OpenAI-compatible image proxies. Blank = api.openai.com."
+            label="OpenAI-compatible image base URL"
+            hint="Blank = Lemonade at http://127.0.0.1:13305/v1. Use https://api.openai.com/v1 for hosted OpenAI."
           >
             <input
               className={ui.input}
@@ -575,18 +578,18 @@ export function AdminSettingsPanel() {
                   images: { ...config.images, openaiBaseUrl: event.target.value },
                 })
               }
-              placeholder="https://api.openai.com/v1"
+              placeholder="http://127.0.0.1:13305/v1"
             />
           </Field>
           <SecretField
-            label="OpenAI image API key"
+            label="OpenAI-compatible image API key"
             isSet={config.images.hasOpenaiApiKey}
             value={openaiImageKey}
             onChange={setOpenaiImageKey}
             hint={
               env.hasOpenaiImageApiKey
                 ? "An env-var key is also set; this one wins when filled."
-                : "Billed to whoever owns the key. Used only when a campaign's backend is the OpenAI API."
+                : "Optional for local Lemonade; required only when the selected compatible endpoint requires authentication."
             }
           />
         </div>

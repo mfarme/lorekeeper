@@ -340,7 +340,7 @@ const JUDGE_SYSTEM = `You are checking whether one specific story beat of a D&D 
 You are given the beat and the most recent play. Reply with ONLY the word YES if the beat has clearly and fully happened in that play, or ONLY the word NO if it has not. Working toward the beat is NO. A beat is YES only when the thing it describes has actually occurred in the narration.`;
 
 // Backstop for complete_beat. The DM reliably NARRATES a beat landing but
-// only calls the tool about half the time (measured on qwen3.6-35b), so
+// only calls the tool about half the time (measured on Qwen3.6), so
 // chapter pacing cannot rest on the tool alone. This is one tiny model call
 // asking a single yes/no question, and only when a chapter is already long
 // enough to close, so a short chapter never pays for it. Any failure is a

@@ -6,10 +6,11 @@ import type { AspectPreset, GeneratedImage, ImageBackend, ImageMode, StorySettin
 // (narration images, location maps, portraits) honors the campaign's backend
 // the same way instead of each hardcoding ComfyUI.
 //
-// Only ComfyUI and OpenAI have a producer here. The FLUX backends (mflux-hs,
-// sdnq-hs) are driven by their own worker process; for them a request is
-// recorded and the placeholder tells the table a picture is coming, exactly
-// as before.
+// Only ComfyUI and the OpenAI-compatible adapter have producer-side paths.
+// The latter is Lemonade by default and can also target OpenAI or another
+// compatible image service. The FLUX worker backends are driven by their own
+// process; for them a request is recorded and the placeholder tells the table
+// a picture is coming, exactly as before.
 export function imageProducerReady(backend: ImageBackend): boolean {
   if (backend === "comfyui") {
     return true;

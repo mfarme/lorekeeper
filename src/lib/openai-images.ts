@@ -1,31 +1,45 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { configValue, getGlobalConfig } from "@/lib/app-config";
+import {
+  DEFAULT_LEMONADE_IMAGE_MODEL,
+  isLemonadeBaseUrl,
+  lemonadeV1BaseUrl,
+} from "@/lib/lemonade";
 import { serverEnv } from "@/lib/server-env";
 import type { AspectPreset, GeneratedImage, ImageMode } from "@/lib/types";
 
-// OpenAI Images backend: the paid escape hatch for a server (or an app-only
-// host) whose hardware cannot run a local image model. The key is the server
-// owner's, lives in the admin config or the environment, and every request
-// originates server-side, so campaign members never see it.
+// OpenAI-compatible Images backend: by default this fork points at Lemonade's
+// local `/v1/images/generations` endpoint, while the same adapter still works
+// with OpenAI or another compatible proxy. Local Lemonade does not need an API
+// key; remote OpenAI-compatible services can still use the admin/env key.
 //
-// The base URL is configurable for OpenAI-compatible image proxies, but the
-// defaults are api.openai.com and gpt-image-1.
+// Lemonade accepts b64_json responses and its image models use diffusion
+// controls (`steps`, `cfg_scale`) rather than OpenAI quality tiers.
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "gpt-image-1";
 const GENERATE_TIMEOUT_MS = 4 * 60 * 1000;
 
 function resolveConfig() {
   const images = getGlobalConfig().images;
+  const baseUrl = configValue(
+    images.openaiBaseUrl,
+    "OPENAI_IMAGE_BASE_URL",
+    lemonadeV1BaseUrl(),
+  ).replace(/\/+$/, "");
+  const lemonade = isLemonadeBaseUrl(baseUrl);
   return {
-    baseUrl: configValue(images.openaiBaseUrl, "OPENAI_IMAGE_BASE_URL", DEFAULT_BASE_URL).replace(
-      /\/+$/,
-      "",
+    baseUrl,
+    lemonade,
+    model: configValue(
+      images.openaiModel,
+      "OPENAI_IMAGE_MODEL",
+      lemonade
+        ? serverEnv("LEMONADE_IMAGE_MODEL", DEFAULT_LEMONADE_IMAGE_MODEL)
+        : DEFAULT_MODEL,
     ),
-    model: configValue(images.openaiModel, "OPENAI_IMAGE_MODEL", DEFAULT_MODEL),
     // OPENAI_API_KEY as the last fallback because it is the name every other
-    // tool trains people to set.
+    // tool trains people to set. Lemonade itself does not require one.
     apiKey:
       images.openaiApiKey.trim() ||
       serverEnv("OPENAI_IMAGE_API_KEY") ||
@@ -34,14 +48,34 @@ function resolveConfig() {
 }
 
 // Whether picking the "openai" backend can actually produce anything. The
-// dispatcher checks this before enqueueing, so a backend selected without a
-// key degrades to "request recorded" like the FLUX backends do.
+// dispatcher checks this before enqueueing; local Lemonade needs no key, while
+// hosted OpenAI-compatible endpoints still require one.
 export function openAiImagesConfigured(): boolean {
-  return resolveConfig().apiKey !== "";
+  const config = resolveConfig();
+  return config.lemonade || config.apiKey !== "";
 }
 
 // gpt-image-1 sizes; dall-e-3 uses its own pair for the non-square shapes.
-function sizeFor(model: string, aspect: AspectPreset): { size: string; width: number; height: number } {
+function sizeFor(
+  model: string,
+  aspect: AspectPreset,
+  lemonade: boolean,
+): { size: string; width: number; height: number } {
+  if (lemonade) {
+    const defaults: Record<AspectPreset, [number, number]> = {
+      square: [512, 512],
+      portrait: [512, 768],
+      landscape: [768, 512],
+    };
+    const configured = serverEnv("LEMONADE_IMAGE_SIZE", "").trim();
+    const match = /^(\d+)x(\d+)$/.exec(configured);
+    const [width, height] = match
+      ? [Number(match[1]), Number(match[2])]
+      : defaults[aspect];
+    if (width > 0 && height > 0) {
+      return { size: `${width}x${height}`, width, height };
+    }
+  }
   const dalle = model.startsWith("dall-e");
   if (aspect === "portrait") {
     return dalle
@@ -72,19 +106,35 @@ export async function generateOpenAiImage(options: {
   aspect: AspectPreset;
   hasReferences?: boolean;
 }): Promise<GeneratedImage> {
-  const { baseUrl, model, apiKey } = resolveConfig();
-  if (!apiKey) {
+  const { baseUrl, lemonade, model, apiKey } = resolveConfig();
+  if (!lemonade && !apiKey) {
     throw new Error(
-      "The OpenAI image backend has no API key. Add one in Admin > Image generation.",
+      "The OpenAI-compatible image backend has no API key. Add one in Admin > Image generation, or point it at Lemonade.",
     );
   }
 
   const startedAt = Date.now();
-  const { size, width, height } = sizeFor(model, options.aspect);
-  const body: Record<string, unknown> = { model, prompt: options.prompt, size, n: 1 };
-  if (model.startsWith("dall-e")) {
-    // dall-e-3 defaults to returning a URL and its own quality names.
-    body.response_format = "b64_json";
+  const { size, width, height } = sizeFor(model, options.aspect, lemonade);
+  const body: Record<string, unknown> = {
+    model,
+    prompt: options.prompt,
+    size,
+    n: 1,
+    response_format: "b64_json",
+  };
+  if (lemonade) {
+    // Lemonade's stable-diffusion.cpp image route accepts these controls and
+    // does not use OpenAI's paid quality tiers.
+    const steps = Number.parseInt(serverEnv("LEMONADE_IMAGE_STEPS", "8"), 10);
+    const cfgScale = Number.parseFloat(serverEnv("LEMONADE_IMAGE_CFG_SCALE", "1"));
+    if (Number.isFinite(steps) && steps > 0) {
+      body.steps = steps;
+    }
+    if (Number.isFinite(cfgScale) && cfgScale >= 0) {
+      body.cfg_scale = cfgScale;
+    }
+  } else if (model.startsWith("dall-e")) {
+    // dall-e-3 has its own quality names; b64_json keeps the response local.
     body.quality = options.mode === "slow" ? "hd" : "standard";
   } else {
     // The app's fast/slow dial maps onto gpt-image quality tiers; "high" is
@@ -104,7 +154,7 @@ export async function generateOpenAiImage(options: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -114,16 +164,16 @@ export async function generateOpenAiImage(options: {
       // The upstream message names the real problem (bad key, no billing,
       // moderation refusal) far better than a status code would.
       const detail = payload.error?.message || `the API answered ${response.status}`;
-      throw new Error(`OpenAI image generation failed: ${detail}`);
+      throw new Error(`OpenAI-compatible image generation failed: ${detail}`);
     }
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("OpenAI image generation timed out.");
+      throw new Error("OpenAI-compatible image generation timed out.");
     }
-    if (error instanceof Error && error.message.startsWith("OpenAI image")) {
+    if (error instanceof Error && error.message.startsWith("OpenAI-compatible image")) {
       throw error;
     }
-    throw new Error(`Could not reach the OpenAI image API at ${baseUrl}.`);
+    throw new Error(`Could not reach the OpenAI-compatible image API at ${baseUrl}.`);
   } finally {
     clearTimeout(timer);
   }

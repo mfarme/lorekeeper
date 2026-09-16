@@ -3,6 +3,11 @@ import { isErrorResponse, requireAdmin } from "@/lib/admin-api";
 import { getGlobalConfig, saveGlobalConfig } from "@/lib/db/app-settings";
 import { isDeviceWorld, serverEnv } from "@/lib/server-env";
 import { resolveSignupMode, type GlobalConfig } from "@/lib/schemas/global-config";
+import {
+  DEFAULT_LEMONADE_TEXT_MODEL,
+  lemonadeBaseUrl,
+  lemonadeV1BaseUrl,
+} from "@/lib/lemonade";
 import { announcedAddressFor, isUnroutableAddress, voiceConfig } from "@/lib/voice/config";
 
 export const runtime = "nodejs";
@@ -54,16 +59,19 @@ function maskedConfig(config: GlobalConfig) {
 // Read-only hints so the admin UI can show what a cleared field falls back to.
 function envDefaults() {
   return {
-    customBaseUrl: serverEnv("OPENAI_COMPAT_BASE_URL"),
-    customModel: serverEnv("OPENAI_COMPAT_MODEL"),
+    customBaseUrl: serverEnv("OPENAI_COMPAT_BASE_URL", lemonadeV1BaseUrl()),
+    customModel: serverEnv(
+      "OPENAI_COMPAT_MODEL",
+      serverEnv("LEMONADE_TEXT_MODEL", DEFAULT_LEMONADE_TEXT_MODEL),
+    ),
     hasCustomApiKey: serverEnv("OPENAI_COMPAT_API_KEY") !== "" || serverEnv("OPENROUTER_API_KEY") !== "",
     comfyUrl: serverEnv("COMFYUI_URL", "http://127.0.0.1:8188"),
     fluxWorkerUrl: serverEnv("FLUX_WORKER_URL", "http://127.0.0.1:7869"),
-    imageBackend: serverEnv("DEFAULT_IMAGE_BACKEND"),
+    imageBackend: serverEnv("DEFAULT_IMAGE_BACKEND") || "Lemonade (OpenAI-compatible)",
     hasOpenaiImageApiKey:
       serverEnv("OPENAI_IMAGE_API_KEY") !== "" || serverEnv("OPENAI_API_KEY") !== "",
-    kokoroUrl: serverEnv("KOKORO_URL", "http://127.0.0.1:8880"),
-    sttUrl: serverEnv("STT_URL", "http://127.0.0.1:8870"),
+    kokoroUrl: serverEnv("KOKORO_URL", lemonadeBaseUrl()),
+    sttUrl: serverEnv("STT_URL", lemonadeBaseUrl()),
     discordClientId: serverEnv("DISCORD_CLIENT_ID"),
     hasDiscordClientSecret: serverEnv("DISCORD_CLIENT_SECRET") !== "",
     publicUrl: serverEnv("APP_PUBLIC_URL"),

@@ -13,6 +13,7 @@
     "build": "next build",
     "start": "next start",
     "start:lan": "next start -H 0.0.0.0 -p 3005",
+    "start:lemonade": "bash scripts/start-lemonade.sh",
     "lint": "eslint",
     "test": "node scripts/test-all.mjs",
     "resources:generate": "node scripts/generate-class-resources.mjs",

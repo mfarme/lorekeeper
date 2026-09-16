@@ -5,6 +5,10 @@ import {
   isLocalTextModelId,
   isTextProvider,
 } from "@/lib/text-models";
+import {
+  DEFAULT_LEMONADE_TEXT_MODEL,
+  lemonadeV1BaseUrl,
+} from "@/lib/lemonade";
 import { isImageBackend } from "@/lib/types";
 import type { StorySettings } from "@/lib/types";
 
@@ -16,12 +20,17 @@ function clean(value: string) {
 // admin panel (app_settings) > env var > DEFAULT_STORY_SETTINGS.
 export function configuredDefaultStorySettings(): StorySettings {
   const cfg = getGlobalConfig();
-  const customBaseUrl = cfg.text.customBaseUrl || clean(serverEnv("OPENAI_COMPAT_BASE_URL"));
+  const customBaseUrl =
+    cfg.text.customBaseUrl ||
+    clean(serverEnv("OPENAI_COMPAT_BASE_URL", lemonadeV1BaseUrl()));
   const openRouterDefaultModel = /(^|\.)openrouter\.ai/i.test(customBaseUrl)
     ? clean(serverEnv("OPENROUTER_MODEL", "google/gemini-3.5-flash"))
     : "";
   const customModel =
-    cfg.text.customModel || clean(serverEnv("OPENAI_COMPAT_MODEL")) || openRouterDefaultModel;
+    cfg.text.customModel ||
+    clean(serverEnv("OPENAI_COMPAT_MODEL")) ||
+    openRouterDefaultModel ||
+    clean(serverEnv("LEMONADE_TEXT_MODEL", DEFAULT_LEMONADE_TEXT_MODEL));
   const requestedProvider = cfg.text.provider || clean(serverEnv("DEFAULT_TEXT_PROVIDER"));
   const textProvider = isTextProvider(requestedProvider)
     ? requestedProvider

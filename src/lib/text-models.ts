@@ -3,8 +3,8 @@
 // is reached through "custom" with the OpenRouter preset URL.
 //
 // "none" is a positive record that this server has no AI DM at all. Without
-// it, "no AI" and "the shipped 127.0.0.1:8001 default with nothing listening"
-// are indistinguishable, and the UI cannot warn anyone before a campaign
+// it, "no AI" and "the shipped Lemonade default with nothing listening" are
+// indistinguishable, and the UI cannot warn anyone before a campaign
 // fails its first turn.
 export type TextProvider = "local" | "custom" | "none";
 

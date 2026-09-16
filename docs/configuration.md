@@ -11,15 +11,22 @@ falls through to the env var.
 | Variable | Default | Purpose |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Local text server |
-| `DEFAULT_TEXT_PROVIDER` | `local` | New-story default: `local` or `custom` |
-| `OPENAI_COMPAT_BASE_URL` | — | New-story default URL for Connect a server |
-| `OPENAI_COMPAT_MODEL` | — | New-story default model for Connect a server |
+| `DEFAULT_TEXT_PROVIDER` | `custom` | New-story default: `local`, `custom`, or `none` |
+| `OPENAI_COMPAT_BASE_URL` | `http://127.0.0.1:13305/v1` | New-story default URL for Lemonade/OpenAI-compatible chat |
+| `OPENAI_COMPAT_MODEL` | `Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6` | New-story default model for the Lemonade chat endpoint |
 | `LOCAL_TEXT_MAX_TOKENS` | `4096` | Max tokens generated per local turn |
 | `LOCAL_TEXT_CONTEXT` | model max | Cap on the local context window |
 | `LOCAL_TEXT_TIMEOUT_MS` | `360000` | Local turn timeout (idle, resets per streamed chunk) |
 | `ARC_TEXT_TIMEOUT_MS` | `480000` | Timeout for story-arc generation/refresh and chapter summaries (non-streaming, whole reply must finish in time) |
 | `OPENROUTER_API_KEY` | — | Fallback key for OpenRouter URLs (else set in-app) |
 | `OPENAI_COMPAT_API_KEY` | — | Fallback key for other connected servers |
+| `LEMONADE_BASE_URL` | `http://127.0.0.1:13305` | Lemonade server root for chat, audio, health, and images |
+| `LEMONADE_TEXT_MODEL` | `Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6` | Local Lemonade chat model |
+| `LEMONADE_TTS_MODEL` | `kokoro-v1` | Local Lemonade speech model |
+| `LEMONADE_STT_MODEL` | `Moonshine-Medium-Streaming` | Local Lemonade transcription model |
+| `LEMONADE_IMAGE_MODEL` | `Z-Image-Turbo-TheNoise` | Local Lemonade OpenAI-compatible image model |
+| `LEMONADE_IMAGE_STEPS` | `8` | Diffusion steps for Lemonade image generation |
+| `LEMONADE_IMAGE_CFG_SCALE` | `1` | Diffusion guidance for Lemonade image generation |
 | `FLUX_WORKER_URL` | `http://127.0.0.1:7869` | Image worker |
 | `COMFYUI_URL` | `http://127.0.0.1:8188` | Default ComfyUI server for the ComfyUI backend |
 | `ULTRA_FAST_IMAGE_GEN_DIR` | `~/ultra-fast-image-gen` | FLUX backends repo |
@@ -34,9 +41,9 @@ falls through to the env var.
 | Variable | Default | Purpose |
 |---|---|---|
 | `CONTENT_DB_PATH` | `data/content/open5e.sqlite` | Open5e content pack (built by `node scripts/import-open5e.mjs`) |
-| `STT_URL` | `http://127.0.0.1:8870` | Push-to-talk transcription service (odm-stt.service) |
-| `STT_MODEL` | `distil-large-v3` | faster-whisper model the STT proxy requests |
-| `KOKORO_URL` | `http://127.0.0.1:8880` | Kokoro-FastAPI TTS service for DM narration |
+| `STT_URL` | `http://127.0.0.1:13305` | Push-to-talk transcription service; Lemonade by default, standalone faster-whisper override |
+| `STT_MODEL` | `distil-large-v3` | Model name for a legacy standalone STT service; Lemonade uses `LEMONADE_STT_MODEL` |
+| `KOKORO_URL` | `http://127.0.0.1:13305` | DM narration service; Lemonade by default, standalone Kokoro override |
 | `DM_DEBUG` | — | `1` logs DM model content and tool calls |
 | `DM_LEAN_TOOLS` | — | `1` removes the stat-mutation tools if the model's tool fidelity suffers |
 | `DM_COMPACT_THRESHOLD` | `120` | Messages before history compaction begins (lower to test) |
@@ -47,13 +54,40 @@ falls through to the env var.
 | `WORLD_REGISTRY_URL` | the built-in registry | https JSON index of downloadable campaign plugins, browsable under Admin, Campaign plugins (or set there). Set it to `off` to browse none. The packs any registry lists are third-party content this project neither ships nor vets, and nothing installs without an admin doing it. See [worlds.md](worlds.md) |
 | `WORLD_PACKS_DIR` | `data/worlds` | Where installed campaign plugins are written. Gitignored, and not covered by the app's MIT license |
 
-Secrets (model API keys) belong in `.env.server`, never in code or `.env.local`.
+Secrets (model API keys) belong in `.env.server`, never in `.env.local`.
+
+## Lemonade-first local stack
+
+This fork treats Lemonade as the default OpenAI-compatible provider. The server
+uses the same `LEMONADE_BASE_URL` for chat, TTS, STT, and image generation:
+
+- chat: `/v1/chat/completions`, model `Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6`
+- TTS: `/v1/audio/speech`, model `kokoro-v1`
+- STT: `/v1/audio/transcriptions`, model `Moonshine-Medium-Streaming`
+- images: `/v1/images/generations`, model `Z-Image-Turbo-TheNoise`
+
+The app keeps the inference endpoint server-side. It also converts browser
+WebM/Opus recordings to 16 kHz mono PCM16 WAV before sending them to Lemonade's
+Moonshine file endpoint. No Lemonade API key is needed for a loopback install.
+
+After `npm run build`, start the app with:
+
+```bash
+npm run start:lemonade
+```
+
+The launcher checks Lemonade's `/live` endpoint, creates `.env.server` with a
+new database key on first run, and starts the LAN listener on port 3005. Set
+`LEMONADE_BASE_URL` in the environment for a different host; set the legacy
+`OPENAI_COMPAT_BASE_URL`, `KOKORO_URL`, `STT_URL`, or `OPENAI_IMAGE_BASE_URL`
+when deliberately using another compatible service.
 
 ### In a container
 
 Every default above points at `127.0.0.1`, which inside a container means the
 container itself. `docker-compose.yml` therefore overrides the service URLs to
-`host.docker.internal` (llama.cpp, Ollama, ComfyUI, Kokoro, STT) and sets
+`host.docker.internal` (Lemonade on `:13305` by default, plus Ollama,
+ComfyUI, and any legacy speech services) and sets
 `CONTENT_DB_PATH=/app/content/open5e.sqlite`, since the baked content pack has
 to live outside the `/app/data` volume. Set anything you want to change in a
 `.env` file next to the compose file rather than in `.env.server`: the image has
@@ -79,15 +113,17 @@ server refuses to start without `DB_ENCRYPTION_KEY` in `.env.server`.
   data and stays unencrypted. Files under `public/uploads` and
   `public/generated*` are also not covered.
 
-### Voice services on this machine
+### Speech services on this machine
 
-- STT: `~/.config/systemd/user/odm-stt.service` runs `~/odm-stt/server.py`
-  (faster-whisper CPU int8) on 127.0.0.1:8870. Change the model with the
-  `STT_MODEL` env in the unit (e.g. `small` for faster, lower-quality
-  transcription).
-- TTS: the existing Kokoro-FastAPI service on :8880; the campaign's
-  narrator voice is picked in campaign settings. Narration MP3s are written
-  under `public/generated-audio/<campaignId>/`.
+- **STT (default):** Lemonade/Moonshine at `LEMONADE_BASE_URL` (normally
+  `http://127.0.0.1:13305`), using `LEMONADE_STT_MODEL`. Browser WebM/Opus is
+  converted server-side to the 16 kHz mono PCM16 WAV that Moonshine expects.
+- **STT fallback:** set `STT_URL` to a standalone faster-whisper-compatible
+  service; that path keeps the `STT_MODEL` setting and forwards the original
+  recording format.
+- **TTS (default):** Lemonade/Kokoro at the same base URL, using
+  `LEMONADE_TTS_MODEL`; set `KOKORO_URL` to use standalone Kokoro-FastAPI.
+  Narration MP3s are written under `public/generated-audio/<campaignId>/`.
 
 ## Playing from your phone
 

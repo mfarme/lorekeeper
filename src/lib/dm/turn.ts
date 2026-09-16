@@ -675,7 +675,7 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
       // Force pure narration on the last permitted call so a tool-happy
       // model cannot loop forever.
       toolChoice: finalCall ? "none" : "auto",
-      // Thinking mode on tool-decision calls only: without it qwen3.6-35b
+      // Thinking mode on tool-decision calls only: without it Qwen3.6
       // narrates right past its tools (0/11 tool calls in live combat);
       // with it, rolls and encounters fire reliably. The forced-narration
       // final call skips it to keep turns snappy. DM_THINKING=0 disables.

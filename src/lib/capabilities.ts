@@ -2,6 +2,11 @@ import { configValue, getGlobalConfig } from "@/lib/app-config";
 import { configuredDefaultStorySettings } from "@/lib/runtime-defaults";
 import { serverEnv } from "@/lib/server-env";
 import { voiceConfig, type VoiceMode } from "@/lib/voice/config";
+import {
+  isLemonadeBaseUrl,
+  lemonadeBaseUrl,
+  lemonadeV1BaseUrl,
+} from "@/lib/lemonade";
 import type { StorySettings } from "@/lib/types";
 
 // What this server can actually do, derived from the same resolution the DM
@@ -52,28 +57,36 @@ export function utilityConfigured(settings: Pick<StorySettings, "utilityModel">)
   return Boolean(settings.utilityModel.trim());
 }
 
-// Images follow the same rule as speech: the key-gated OpenAI backend needs
-// its key, and a self-hosted backend counts when the admin or env named a
-// URL for it or when something answers at the shipped default. A bare
-// default with nothing listening is the "no image AI on this server" case
-// that every upload-or-paint control needs to know about, so that it can
-// offer the upload alone instead of a paint button that fails.
+// Images follow the same rule as speech: hosted OpenAI-compatible backends
+// need a key, while a local Lemonade endpoint is usable without one. Other
+// self-hosted backends count when the admin/env named a URL or a live default
+// answers.
 export function imagesConfigured(
   backend: string,
   hasOpenaiKey: boolean,
   explicitUrl: string,
   defaultReachable: boolean,
+  localOpenaiCompatible = false,
 ): boolean {
   if (backend === "openai") {
-    return hasOpenaiKey;
+    return hasOpenaiKey || localOpenaiCompatible;
   }
   return Boolean(explicitUrl.trim()) || defaultReachable;
 }
 
 // Where a cheap liveness GET goes for the image backend. ComfyUI exposes
-// /system_stats; the bundled FLUX workers share one /health. OpenAI is
-// key-gated and never probed.
-export function imagesProbeUrl(backend: string, comfyBaseUrl: string, fluxWorkerUrl: string): string {
+// /system_stats; the bundled FLUX workers share one /health. Lemonade's
+// OpenAI-compatible image route shares /v1/health; hosted OpenAI is key-gated
+// and is not probed.
+export function imagesProbeUrl(
+  backend: string,
+  comfyBaseUrl: string,
+  fluxWorkerUrl: string,
+  openaiBaseUrl = "",
+): string {
+  if (backend === "openai" && isLemonadeBaseUrl(openaiBaseUrl)) {
+    return `${lemonadeBaseUrl()}/v1/health`;
+  }
   if (backend === "comfyui") {
     return `${comfyBaseUrl.replace(/\/+$/, "")}/system_stats`;
   }
@@ -137,7 +150,10 @@ export function storyProbeHeaders(
 }
 
 export function ttsProbeUrl(kokoroBaseUrl: string): string {
-  return `${kokoroBaseUrl.replace(/\/+$/, "")}/health`;
+  const base = kokoroBaseUrl.replace(/\/+$/, "");
+  return isLemonadeBaseUrl(base)
+    ? `${lemonadeBaseUrl()}/v1/health`
+    : `${base}/health`;
 }
 
 type ProbeEntry = { probedAt: number; reachable: boolean };
@@ -201,9 +217,15 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
   const cfg = getGlobalConfig();
   const configured = storyConfigured(settings);
   const ollamaBase = serverEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434");
-  const kokoroBase = configValue(cfg.speech.kokoroUrl, "KOKORO_URL", "http://127.0.0.1:8880");
+  const kokoroBase = configValue(cfg.speech.kokoroUrl, "KOKORO_URL", lemonadeBaseUrl());
   const comfyBase = configValue(cfg.images.comfyUrl, "COMFYUI_URL", "http://127.0.0.1:8188");
   const fluxBase = serverEnv("FLUX_WORKER_URL", "http://127.0.0.1:7869");
+  const openaiImageBase = configValue(
+    cfg.images.openaiBaseUrl,
+    "OPENAI_IMAGE_BASE_URL",
+    lemonadeV1BaseUrl(),
+  );
+  const localOpenaiImage = isLemonadeBaseUrl(openaiImageBase);
   const [storyReachable, ttsReachable, imagesReachable] = await Promise.all([
     configured
       ? probeReachable(
@@ -217,7 +239,9 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
         )
       : Promise.resolve(false),
     probeReachable(ttsProbeUrl(kokoroBase)),
-    probeReachable(imagesProbeUrl(settings.imageBackend, comfyBase, fluxBase)),
+    probeReachable(
+      imagesProbeUrl(settings.imageBackend, comfyBase, fluxBase, openaiImageBase),
+    ),
   ]);
   const voice = voiceConfig();
   const hasOpenaiImageKey = Boolean(
@@ -237,17 +261,27 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
         hasOpenaiImageKey,
         explicitImageUrl,
         imagesReachable,
+        localOpenaiImage,
       ),
-      reachable: settings.imageBackend === "openai" ? hasOpenaiImageKey : imagesReachable,
+      reachable:
+        settings.imageBackend === "openai"
+          ? localOpenaiImage
+            ? imagesReachable
+            : hasOpenaiImageKey
+          : imagesReachable,
       backend: settings.imageBackend,
     },
     tts: {
       configured: speechConfigured(configValue(cfg.speech.kokoroUrl, "KOKORO_URL"), ttsReachable),
       reachable: ttsReachable,
     },
-    // No probe for Whisper: nothing depends on it at creation time, so an
-    // explicit URL (admin panel or env) is the only signal reported.
-    stt: { configured: Boolean(configValue(cfg.speech.sttUrl, "STT_URL")) },
+    // Lemonade owns the default transcription lane; STT_URL can still point
+    // at the legacy standalone faster-whisper service.
+    stt: {
+      configured: Boolean(
+        configValue(cfg.speech.sttUrl, "STT_URL", lemonadeBaseUrl()),
+      ),
+    },
     voice: { enabled: voice.enabled, mode: voice.mode },
   };
 }

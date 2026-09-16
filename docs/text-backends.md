@@ -1,34 +1,25 @@
 # Text backends
 
 The Text Model panel in the sidebar picks the provider and model per story.
-Narration streams in as the model writes it on every provider. The preferred
-backend is llama.cpp's `llama-server` (the app's defaults point at it); the
-legacy Ollama-native "Local" provider and any OpenAI-compatible server keep
-working.
+Narration streams in as the model writes it on every provider. This Lorekeeper
+fork prefers the local Lemonade OpenAI-compatible endpoint; the legacy Ollama
+provider and other compatible servers keep working.
 
-## The default DM model: qwen3.6-35b (llama.cpp, preferred)
+## The default DM model: Qwen3.6-35B-A3B (Lemonade)
 
-Campaign play defaults to llama-server (llama.cpp) on
-`http://127.0.0.1:8001/v1` with a model named `qwen3.6-35b`: base
-Qwen3.6-35B-A3B Q8 with a 64K context and Qwen's recommended non-thinking
-samplers. A short default context silently truncates the long DM prompt
-(party sheets, scene, story summary), which makes the model loop; the 64K
-window is what fixes that. Direct llama-server run:
+Campaign play defaults to Lemonade on `http://127.0.0.1:13305/v1` with the
+exact model ID `Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6`. Lemonade
+owns model loading and recipe settings. The app only needs the server ready:
 
 ```bash
-llama-server -m Qwen3.6-35B-A3B-Q8_0.gguf \
-  -c 65536 --jinja \
-  --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 \
-  --temp 0.7 --top-p 0.8 --top-k 20 --min-p 0.0 \
-  --port 8001 --alias qwen3.6-35b
+curl -sS -X POST http://127.0.0.1:13305/api/v1/load \
+  -H 'Content-Type: application/json' \
+  -d '{"model_name":"Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6"}'
 ```
 
-In llama-server's router mode the same settings live in the model's preset
-INI instead of flags. Settings to replicate on any server: **context 65536,
-temperature 0.7, top-p 0.8, top-k 20, min-p 0**, plus tool calling enabled
-(`--jinja` for llama.cpp). If the server runs with `--api-key`, set
-`OPENAI_COMPAT_API_KEY` in `.env.server`. Then point the app at the server
-(admin panel, campaign Text Model settings, or `OPENAI_COMPAT_BASE_URL`).
+Then run `npm run start:lemonade`. The same Lemonade host supplies TTS,
+Moonshine STT, and the OpenAI-compatible `Z-Image-Turbo-TheNoise` image route.
+
 
 Prefer Ollama? The same model is committed as a Modelfile with the context
 and samplers baked in; build it and point the app at

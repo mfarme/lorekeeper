@@ -37,19 +37,30 @@ services:
       # Whatever you set here wins over the stored one.
       DB_ENCRYPTION_KEY: ${DB_ENCRYPTION_KEY:-}
 
-      # Text backend: llama.cpp, or any OpenAI-compatible server.
-      OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-http://host.docker.internal:8001/v1}
-      OPENAI_COMPAT_MODEL: ${OPENAI_COMPAT_MODEL:-qwen3.6-35b}
+      # Lemonade/lemond on the host is the default local stack for this fork.
+      # Every URL remains overrideable in .env for other OpenAI-compatible
+      # servers or standalone speech services.
+      LEMONADE_BASE_URL: ${LEMONADE_BASE_URL:-http://host.docker.internal:13305}
+      LEMONADE_TEXT_MODEL: ${LEMONADE_TEXT_MODEL:-Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6}
+      LEMONADE_TTS_MODEL: ${LEMONADE_TTS_MODEL:-kokoro-v1}
+      LEMONADE_STT_MODEL: ${LEMONADE_STT_MODEL:-Moonshine-Medium-Streaming}
+      LEMONADE_IMAGE_MODEL: ${LEMONADE_IMAGE_MODEL:-Z-Image-Turbo-TheNoise}
+      LEMONADE_IMAGE_STEPS: ${LEMONADE_IMAGE_STEPS:-8}
+      LEMONADE_IMAGE_CFG_SCALE: ${LEMONADE_IMAGE_CFG_SCALE:-1}
+      FFMPEG_BIN: ${FFMPEG_BIN:-ffmpeg}
+      OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-http://host.docker.internal:13305/v1}
+      OPENAI_COMPAT_MODEL: ${OPENAI_COMPAT_MODEL:-Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6}
       OPENAI_COMPAT_API_KEY: ${OPENAI_COMPAT_API_KEY:-}
       DEFAULT_TEXT_PROVIDER: ${DEFAULT_TEXT_PROVIDER:-custom}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
 
-      # Images and speech. Each is optional; the app degrades gracefully.
+      # Lemonade serves both endpoints from the same host port by default.
       COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
-      KOKORO_URL: ${KOKORO_URL:-http://host.docker.internal:8880}
-      STT_URL: ${STT_URL:-http://host.docker.internal:8870}
+      KOKORO_URL: ${KOKORO_URL:-http://host.docker.internal:13305}
+      STT_URL: ${STT_URL:-http://host.docker.internal:13305}
+      STT_MODEL: ${STT_MODEL:-distil-large-v3}
 
       # Set these when running behind a reverse proxy. APP_PUBLIC_URL also fixes
       # the Discord OAuth callback URL.

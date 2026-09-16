@@ -71,10 +71,11 @@ RUN cd .next/standalone \
 FROM node:22.23.2-trixie-slim AS runner
 WORKDIR /app
 
-# The patched Debian packages, as in the deps stage; nothing else is
-# installed here, so the runner stays the base image plus the app.
+# The patched Debian packages, as in the deps stage. ffmpeg is required for
+# the Lemonade STT boundary, which converts browser WebM/Opus to PCM16 WAV.
 RUN apt-get update \
   && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \

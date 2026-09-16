@@ -25,6 +25,11 @@ to add multiplayer, and grew into a different app: the AI drives the session,
 requesting rolls, starting encounters, and playing NPCs and companions, following
 a secret story arc it regenerates as the campaign moves.
 
+This Lorekeeper fork makes the local [Lemonade](https://lemonade-server.ai/)
+server the primary provider. Chat, Kokoro TTS, Moonshine STT, and
+OpenAI-compatible image generation stay behind the Lorekeeper server; the
+browser never receives a Lemonade credential or talks to it directly.
+
 <div align="center">
 
 ### The table, mid-combat
@@ -259,12 +264,13 @@ and clamped by code.
 - **Node 22+** (npm). `npm install` pulls everything the app itself needs. Or
   **Docker**, if you would rather not install a toolchain at all: see
   [Run with Docker](#run-with-docker).
-- **A text model backend** (one of):
-  - [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` at
-    `http://127.0.0.1:8001` serving a model named `qwen3.6-35b`. This is the default
-    and preferred configuration (see below). Or:
-  - any other OpenAI-compatible server with tool calling: Ollama, LM Studio, vLLM,
-    TabbyAPI, KoboldCpp, or a remote API like OpenRouter.
+- **A local Lemonade server** (`lemond`) at `http://127.0.0.1:13305` with the
+  configured chat model `Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6`.
+  Lemonade exposes the OpenAI-compatible `/v1/chat/completions` endpoint. Or
+  use any other OpenAI-compatible server with tool calling: llama.cpp, Ollama,
+  LM Studio, vLLM, TabbyAPI, KoboldCpp, or OpenRouter.
+- **ffmpeg** for the Lemonade STT boundary, which converts browser WebM/Opus
+  recordings to the PCM16 WAV accepted by Moonshine.
 - **Optional services** (each feature simply stays off, or falls back to a
   placeholder, without it):
   - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) at `:8188` for character
@@ -278,33 +284,36 @@ and clamped by code.
 ## Quick start
 
 ```bash
-git clone <this repo> && cd open-dungeon-master
-npm install
+git clone https://github.com/mfarme/lorekeeper.git && cd lorekeeper
+npm ci
 
-# The database is encrypted at rest; generate a key once and keep it safe.
-echo "DB_ENCRYPTION_KEY=$(openssl rand -hex 32)" > .env.server
+# The database is encrypted at rest; start-lemonade creates this once.
+# For a manually managed key, write DB_ENCRYPTION_KEY to .env.server.
 
 # Build the content pack: spells, feats, items, subclasses, monsters.
 # Downloads from api.open5e.com once, then caches for offline re-runs.
 node scripts/import-open5e.mjs
 
 # Warm the local embedding model (MiniLM, ~86MB) into models/embeddings.
-# Optional: the app auto-downloads it on first use, but this pulls it now
-# so an offline machine has it ready.
 npm run fetch-model
 
-npm run dev        # http://localhost:3000, or:
-npm run dev:lan    # 0.0.0.0:3005 so your party can reach it on the LAN
+npm run build
+npm run start:lemonade  # http://localhost:3005
 ```
 
-The **embedding model** (MiniLM, used for semantic story recall and lore search) is no
-longer bundled in the repo. transformers.js downloads it from HuggingFace into
-`models/embeddings/` the first time the app needs it, so first use requires network;
-`npm run fetch-model` fetches it ahead of time.
+`start:lemonade` verifies Lemonade at `http://127.0.0.1:13305/live`, creates a
+local database key if needed, and starts the LAN listener on port 3005. Set
+`LEMONADE_BASE_URL` to point at another Lemonade host. The same server-side
+adapter covers `/v1/chat/completions`, `/v1/audio/speech`,
+`/v1/audio/transcriptions`, and `/v1/images/generations`.
 
-Then start the DM model with llama.cpp's `llama-server`. See
-[The default DM model](#the-default-dm-model-qwen36-35b-on-llamacpp) below for the
-exact command and settings.
+If you are using a different OpenAI-compatible stack, set
+`OPENAI_COMPAT_BASE_URL` and `OPENAI_COMPAT_MODEL`; `KOKORO_URL`, `STT_URL`, and
+`OPENAI_IMAGE_BASE_URL` remain available as per-modality overrides.
+
+The Lemonade server supplies the DM model and is normally already running on
+this machine. The legacy standalone llama.cpp instructions remain below as an
+alternate backend.
 
 **The first account registered becomes the server admin.** To promote someone on an
 existing install: `node scripts/make-admin.mjs <username>`.
@@ -372,8 +381,8 @@ start; an explicit key always wins over the stored one.
 
 ### Pointing at your AI services
 
-The container reaches the host through `host.docker.internal`, so llama.cpp on
-`127.0.0.1:8001` becomes `http://host.docker.internal:8001/v1`. Every URL is
+The container reaches the host through `host.docker.internal`, so Lemonade on
+`127.0.0.1:13305` becomes `http://host.docker.internal:13305/v1`. Every URL is
 overridable in `.env`; copy [.env.docker.example](.env.docker.example) for the full
 list.
 
@@ -436,42 +445,43 @@ without them the workflow succeeds and publishes to GHCR only.
 To publish under a different Docker ID, change `DOCKERHUB_IMAGE` in the workflow and the
 `image:` default in `docker-compose.yml` to match.
 
-## The default DM model (qwen3.6-35b on llama.cpp)
+## The default DM model (Qwen3.6-35B-A3B on Lemonade)
 
-The app defaults to llama.cpp's `llama-server` at `http://127.0.0.1:8001/v1` serving
-Qwen3.6-35B-A3B (a MoE model, q8) under the model name `qwen3.6-35b`, with a **64K
-context window** and Qwen's recommended samplers. A small default context silently
-truncates the DM prompt (party sheets, scene, story summary), which makes the model
-loop; the 64K window is what makes the difference. Run it:
+The fork defaults to Lemonade's OpenAI-compatible API at
+`http://127.0.0.1:13305/v1`, serving the exact model ID
+`Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6`. Lemonade keeps the
+model lifecycle and recipe settings; Lorekeeper only sends chat requests and
+never treats model output as authoritative game state.
+
+If the model is not already loaded, load it with Lemonade's control API:
 
 ```bash
-llama-server -m Qwen3.6-35B-A3B-Q8_0.gguf \
-  -c 65536 --jinja \
-  --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 \
-  --temp 0.7 --top-p 0.95 --top-k 20 --min-p 0.0 \
-  --port 8001 --alias qwen3.6-35b
+curl -sS -X POST http://127.0.0.1:13305/api/v1/load \
+  -H 'Content-Type: application/json' \
+  -d '{"model_name":"Qwen3.6-35B-A3B-MTP-ROCmFP4-GGUF-STRIX-embF16-headQ6"}'
 ```
 
-`--jinja` enables tool calling, which the dice engine and every sheet mutation depend
-on. In llama-server's router mode the same settings live in the model's preset INI
-instead of flags. If your server runs with `--api-key`, put the key in `.env.server`
-as `OPENAI_COMPAT_API_KEY`.
+The launcher does not load or unload models for you; this avoids colliding with
+other local workloads. Confirm readiness with:
+
+```bash
+curl -sS http://127.0.0.1:13305/v1/health
+```
+
+Lemonade also serves the companion media endpoints from the same port:
+
+- `/v1/audio/speech` with `kokoro-v1`
+- `/v1/audio/transcriptions` with `Moonshine-Medium-Streaming`
+- `/v1/images/generations` with `Z-Image-Turbo-TheNoise`
 
 ### Tool calls need thinking mode
 
 This is the setting that matters most for a working table, and it is not obvious.
-Under the long DM prompt, qwen3.6-35b in non-thinking mode surfaces tool calls only
-about one turn in five: it narrates fights instead of starting an encounter, asks a
-player to roll in prose instead of calling `request_roll`, and generally stops
-driving the engines. With reasoning enabled it calls tools reliably.
-
-The app handles this per request, so you do not configure it on the server:
-
-- It sends `chat_template_kwargs: { enable_thinking: true }` on the **tool-decision**
-  model calls only, and keeps the **final narration** call non-thinking so it still
-  streams to players smoothly.
-- Set `DM_THINKING=0` to force thinking off everywhere. That makes turns fast but tool
-  calls unreliable; it is a fallback, not a normal mode.
+Under a long DM prompt, Qwen3.6 in non-thinking mode can narrate fights instead
+of starting an encounter or calling `request_roll`. The app sends
+`chat_template_kwargs: { enable_thinking: true }` on tool-decision calls and
+keeps final narration non-thinking so it streams smoothly. Set `DM_THINKING=0`
+only as a fallback when tool fidelity is not needed.
 
 ### Reasoning budget and latency
 
@@ -511,27 +521,37 @@ ollama create qwen3.6-dm -f models/qwen3.6-dm.Modelfile
 
 More backends and model guidance: [docs/text-backends.md](docs/text-backends.md).
 
-## Image generation (ComfyUI)
+## Image generation (Lemonade or ComfyUI)
 
-ComfyUI at `COMFYUI_URL` (default `http://127.0.0.1:8188`) drives three things:
-character portraits generated once at character creation, inline scene art during
-play, and the top-down battle maps. Any checkpoint works; the genre preset supplies
-the art style. If ComfyUI is down or busy, these features fail soft to a placeholder
-or a plain icon and the session keeps going.
+The default image backend is Lemonade's OpenAI-compatible
+`/v1/images/generations` endpoint with `Z-Image-Turbo-TheNoise`. It returns
+`b64_json` images; the fork sends `size`, `steps=8`, and `cfg_scale=1`, then
+stores the result locally. The model can be changed with
+`LEMONADE_IMAGE_MODEL` and the endpoint with `OPENAI_IMAGE_BASE_URL`.
 
-All GPU-heavy media (ComfyUI images and TTS) run on a **single serial media queue**.
-On a shared-memory iGPU the image model and the DM model compete for the same pool,
-so jobs are serialized to avoid out-of-memory stalls rather than run in parallel.
-Details in [docs/image-generation.md](docs/image-generation.md).
+ComfyUI at `COMFYUI_URL` (default `http://127.0.0.1:8188`) remains selectable
+for character portraits, inline scene art, and top-down battle maps. Any
+checkpoint works; the genre preset supplies the art style. If either image
+backend is down or busy, these features fail soft to a placeholder or a plain
+icon and the session keeps going.
+
+All GPU-heavy media (Lemonade images, ComfyUI images, and TTS) run on a
+**single serial media queue**. On a shared-memory iGPU the image model and the
+DM model compete for the same pool, so jobs are serialized to avoid out-of-
+memory stalls rather than run in parallel. Details in
+[docs/image-generation.md](docs/image-generation.md).
 
 ## Voice (TTS and push-to-talk)
 
-- **DM narration**: [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) at
-  `KOKORO_URL` (default `http://127.0.0.1:8880`) renders each DM message to speech on
-  the media queue, with a per-campaign voice and per-user mute / volume / replay.
-- **Push-to-talk**: a faster-whisper server at `STT_URL` (default
-  `http://127.0.0.1:8870`, model `STT_MODEL`) transcribes your voice with a
-  confirm-then-send step.
+- **DM narration**: Lemonade/Kokoro at `LEMONADE_BASE_URL` (normally
+  `http://127.0.0.1:13305`) via `/v1/audio/speech`, model `kokoro-v1`, renders
+  each DM message to speech on the media queue. Set `KOKORO_URL` to use a
+  standalone Kokoro-FastAPI server instead.
+- **Push-to-talk**: Lemonade/Moonshine at the same base URL via
+  `/v1/audio/transcriptions`, model `Moonshine-Medium-Streaming`, with a
+  server-side WebM/Opus to PCM16 WAV conversion. Set `STT_URL` for a legacy
+  faster-whisper-compatible service. Both paths keep the confirm-then-send
+  step.
 - **Ambience and music**: a library of public-domain cues (dungeons, forests,
   deserts, rivers, towns, crowds, taverns, wind, plus music and one-shot
   stings) that the AI DM, a human DM, or the engine following the scene can
