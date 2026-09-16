@@ -315,6 +315,9 @@ The Lemonade server supplies the DM model and is normally already running on
 this machine. The legacy standalone llama.cpp instructions remain below as an
 alternate backend.
 
+For the product-level comparison with the in-person Lorekeeper spec, see
+[`docs/lorekeeper-gap-analysis.md`](docs/lorekeeper-gap-analysis.md).
+
 **The first account registered becomes the server admin.** To promote someone on an
 existing install: `node scripts/make-admin.mjs <username>`.
 
