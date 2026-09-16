@@ -1,6 +1,7 @@
-# Open Dungeon Master. One container, one process. The app uses a synchronous
-# SQLite writer, an in-process event bus and an in-process media queue, so it
-# must never be scaled past a single replica.
+# Open Dungeon Master. One container, one SQLite writer, and one app/gateway
+# process group. The app uses a synchronous SQLite writer, an in-process event
+# bus and an in-process media queue, so it must never be scaled past a single
+# replica.
 #
 #   docker compose pull && docker compose up -d   ->  http://localhost:3005
 #
@@ -22,6 +23,8 @@ services:
     restart: unless-stopped
     ports:
       - "${ODM_PORT:-3005}:3005"
+      # Shared-table voice gateway WebSocket (browser PCM/STT).
+      - "${VOICE_GATEWAY_PORT:-8765}:${VOICE_GATEWAY_PORT:-8765}/tcp"
       # Live voice chat. One port, both protocols. This carries the audio
       # itself, which is not HTTP, so it does NOT go through a reverse proxy:
       # open it on the firewall pointing at this host. Set VOICE_ANNOUNCED_IP
@@ -72,6 +75,14 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+
+      # Shared-table voice gateway; the container owns this WebSocket process.
+      VOICE_GATEWAY_ENABLED: ${VOICE_GATEWAY_ENABLED:-1}
+      VOICE_GATEWAY_HOST: ${VOICE_GATEWAY_HOST:-0.0.0.0}
+      VOICE_GATEWAY_PORT: ${VOICE_GATEWAY_PORT:-8765}
+      NEXT_BASE_URL: ${NEXT_BASE_URL:-http://127.0.0.1:3005}
+      VOICE_GATEWAY_PUBLIC_URL: ${VOICE_GATEWAY_PUBLIC_URL:-}
+      VOICE_GATEWAY_ORIGINS: ${VOICE_GATEWAY_ORIGINS:-}
 
       # Live voice chat. Off unless VOICE_ENABLED=1, because it needs the port
       # above opened AND the app served over https (browsers block microphone

@@ -1603,11 +1603,39 @@ function ensureSchema(db: SqliteDatabase) {
       user_id TEXT NOT NULL,
       speaker TEXT NOT NULL,
       text TEXT NOT NULL,
+      text_raw TEXT,
+      utterance_id TEXT,
+      audio_stream_id TEXT,
+      speech_span_id TEXT,
+      audio_start_sample INTEGER,
+      audio_end_sample INTEGER,
+      stt_confidence REAL,
+      speaker_confidence REAL NOT NULL DEFAULT 0,
+      speaker_is_enrolled INTEGER NOT NULL DEFAULT 0,
+      audio_metadata_json TEXT NOT NULL DEFAULT '{}',
       clock_label TEXT NOT NULL DEFAULT '',
       started_at TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_voice_transcript_campaign ON voice_transcript(campaign_id, started_at);
+  `);
+  // Additive migration for databases created before the realtime voice path.
+  addColumns("voice_transcript", [
+    ["text_raw", `TEXT`],
+    ["utterance_id", `TEXT`],
+    ["audio_stream_id", `TEXT`],
+    ["speech_span_id", `TEXT`],
+    ["audio_start_sample", `INTEGER`],
+    ["audio_end_sample", `INTEGER`],
+    ["stt_confidence", `REAL`],
+    ["speaker_confidence", `REAL NOT NULL DEFAULT 0`],
+    ["speaker_is_enrolled", `INTEGER NOT NULL DEFAULT 0`],
+    ["audio_metadata_json", `TEXT NOT NULL DEFAULT '{}'`],
+  ]);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_transcript_utterance
+      ON voice_transcript(campaign_id, utterance_id)
+      WHERE utterance_id IS NOT NULL;
   `);
 
   // Calendar events (docs/vtt-parity-implementation-plan.md 7.2): a moment

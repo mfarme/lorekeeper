@@ -37,9 +37,13 @@ export type NarrationAudio = {
   volume: number;
   unlocked: boolean;
   playingMessageId: string | null;
+  pausedMessageId: string | null;
   playbackError: string | null;
   setMuted: (muted: boolean) => void;
   setVolume: (volume: number) => void;
+  pauseForInterruption: () => void;
+  resume: () => void;
+  stop: () => void;
   unlock: () => void;
   play: (messageId: string, url: string) => void;
   audioByMessage: Map<string, string>;
@@ -51,11 +55,13 @@ export function useNarrationAudio(): NarrationAudio {
   const volume = useSyncExternalStore(subscribePrefs, readVolume, () => 0.8);
   const [unlocked, setUnlocked] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [pausedMessageId, setPausedMessageId] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioByMessage] = useState(() => new Map<string, string>());
   const unlockedRef = useRef(false);
   const playingRef = useRef<string | null>(null);
+  const pausedRef = useRef<string | null>(null);
   // Narrations wait for the current one instead of cutting it off.
   const queueRef = useRef<Array<{ messageId: string; url: string }>>([]);
   // Every messageId ever started or queued; guards against replays when the
@@ -80,7 +86,9 @@ export function useNarrationAudio(): NarrationAudio {
       queueRef.current = [];
       pendingRef.current = [];
       playingRef.current = null;
+      pausedRef.current = null;
       setPlayingMessageId(null);
+      setPausedMessageId(null);
     }
   }, []);
 
@@ -102,6 +110,8 @@ export function useNarrationAudio(): NarrationAudio {
         audioRef.current.preload = "auto";
       }
       const audio = audioRef.current;
+      pausedRef.current = null;
+      setPausedMessageId(null);
       const finish = (errorMessage?: string) => {
         if (playingRef.current !== id) {
           return;
@@ -151,10 +161,55 @@ export function useNarrationAudio(): NarrationAudio {
     run(messageId, url);
   }, []);
 
+  const pauseForInterruption = useCallback(() => {
+    const id = playingRef.current;
+    const audio = audioRef.current;
+    if (!id || !audio) return;
+    audio.pause();
+    playingRef.current = null;
+    pausedRef.current = id;
+    setPlayingMessageId(null);
+    setPausedMessageId(id);
+    setPlaybackError(null);
+  }, []);
+
+  const resume = useCallback(() => {
+    const id = pausedRef.current;
+    const audio = audioRef.current;
+    if (!id || !audio || readMuted()) return;
+    pausedRef.current = null;
+    setPausedMessageId(null);
+    playingRef.current = id;
+    setPlayingMessageId(id);
+    void audio.play().catch(() => {
+      if (playingRef.current !== id) return;
+      playingRef.current = null;
+      pausedRef.current = id;
+      setPlayingMessageId(null);
+      setPausedMessageId(id);
+      setPlaybackError("The narration audio could not resume.");
+    });
+  }, []);
+
+  const stop = useCallback(() => {
+    audioRef.current?.pause();
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+    }
+    queueRef.current = [];
+    playingRef.current = null;
+    pausedRef.current = null;
+    setPlayingMessageId(null);
+    setPausedMessageId(null);
+    setPlaybackError(null);
+  }, []);
+
   // Explicit replay: interrupts whatever is playing and clears the queue.
   const play = useCallback(
     (messageId: string, url: string) => {
       queueRef.current = [];
+      pausedRef.current = null;
+      setPausedMessageId(null);
       startPlayback(messageId, url);
     },
     [startPlayback],
@@ -173,7 +228,7 @@ export function useNarrationAudio(): NarrationAudio {
     if (!held.length || readMuted()) {
       return;
     }
-    if (playingRef.current) {
+    if (playingRef.current || pausedRef.current) {
       queueRef.current.push(...held);
       return;
     }
@@ -211,7 +266,7 @@ export function useNarrationAudio(): NarrationAudio {
         pendingRef.current.push({ messageId, url });
         return;
       }
-      if (playingRef.current) {
+      if (playingRef.current || pausedRef.current) {
         queueRef.current.push({ messageId, url });
       } else {
         startPlayback(messageId, url);
@@ -225,9 +280,13 @@ export function useNarrationAudio(): NarrationAudio {
     volume,
     unlocked,
     playingMessageId,
+    pausedMessageId,
     playbackError,
     setMuted,
     setVolume,
+    pauseForInterruption,
+    resume,
+    stop,
     unlock,
     play,
     audioByMessage,

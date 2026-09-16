@@ -12,6 +12,18 @@ export const RECENT_MINUTES = 5;
 export type TranscriptLine = {
   speaker: string;
   text: string;
+  // Original STT output is preserved as evidence; `text` is the normalized
+  // display form used by the archive.
+  textRaw?: string;
+  utteranceId?: string;
+  audioStreamId?: string;
+  speechSpanId?: string;
+  audioStartSample?: number | null;
+  audioEndSample?: number | null;
+  sttConfidence?: number | null;
+  speakerConfidence?: number;
+  speakerEnrolled?: boolean;
+  audioMetadata?: Record<string, unknown>;
   // Real time the ring started, ISO.
   startedAt: string;
   // The in-world clock when it landed, for the beat and the chapter.

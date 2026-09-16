@@ -7,6 +7,8 @@ import { MapPanel } from "@/app/campaigns/[campaignId]/MapPanel";
 import { useCampaignStream } from "@/app/campaigns/[campaignId]/useCampaignStream";
 import { HandoutStage } from "@/components/HandoutStage";
 import { SceneTitle } from "@/components/SceneTitle";
+import { TableVoice } from "@/app/campaigns/[campaignId]/TableVoice";
+import { useTableAudio } from "@/app/campaigns/[campaignId]/useTableAudio";
 
 // The table view (docs/vtt-parity-implementation-plan.md 13.2): the player
 // projection of the board, the scene art, the sky and the current title
@@ -16,6 +18,7 @@ import { SceneTitle } from "@/components/SceneTitle";
 export default function TablePage({ params }: { params: Promise<{ campaignId: string }> }) {
   const { campaignId } = use(params);
   const { state, refreshBattleMap, markFxPlayed, markCameraDone, markTitleCardShown } = useCampaignStream(campaignId);
+  const { narration } = useTableAudio(state);
 
   if (state.loading) {
     return (
@@ -61,6 +64,14 @@ export default function TablePage({ params }: { params: Promise<{ campaignId: st
       </div>
       <SceneTitle card={state.titleCard} onShown={markTitleCardShown} />
       <HandoutStage campaignId={campaignId} handout={state.handout} userId={state.me.id} steersStory={false} onDismiss={async () => {}} />
+      <div className="pointer-events-none fixed inset-x-0 bottom-3 z-30 flex justify-center px-2 sm:bottom-5">
+        <TableVoice
+          campaignId={campaignId}
+          sheets={state.sheets}
+          defaultCharacterId={state.sheets.find((sheet) => sheet.userId === state.me?.id)?.id ?? ""}
+          narration={narration}
+        />
+      </div>
     </main>
   );
 }

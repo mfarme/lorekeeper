@@ -603,15 +603,41 @@ Log in as an admin and open `/admin` (linked from the account menu):
 The "Sign in with Discord" button appears automatically once both are set. Existing
 users can link Discord to their account from Settings.
 
-## Voice chat (optional)
+## Voice-first shared table
 
-The table can talk over live voice, in the lobby while everyone is still
-building characters and at any point during play. The server runs its own SFU
-(mediasoup) in-process, so there is no third-party service, no account and no
-audio leaving your machine.
+Open `/campaigns/<campaignId>/table` on the device at the center of the table.
+The projection now includes a deliberate **Start listening** gesture, an
+explicit **Speaking as** seat, and a persistent voice surface rather than a
+keyboard-first composer. The gateway keeps the microphone open, resamples
+through an AudioWorklet to 16 kHz mono PCM, streams it to Lemonade Moonshine,
+and shows interim/final transcripts.
 
-Voice is **off by default**: set `VOICE_ENABLED=1` to turn it on. It needs two
-more things, and both are easy to miss:
+Final speech is not sent blindly to the model. The deterministic policy ignores
+side chatter, waits through tentative planning, responds to committed actions
+and direct `Ember`/`Lorekeeper` address, and interrupts narration for corrections,
+rules challenges, and urgent scene questions. Only routed finals create an ODM
+campaign turn; the existing server-side TTS queue then narrates the committed
+reply. Local and server speech detection stop current narration on barge-in.
+
+The gateway listens on TCP `8765` by default and is started by
+`npm run start:lemonade`. `VOICE_GATEWAY_ENABLED=0` disables it. Plain HTTP is
+safe for `localhost`; remote table microphones require HTTPS for capture and a
+WSS-capable reverse-proxy deployment for the gateway. Set
+`VOICE_GATEWAY_ORIGINS` to exact allowed origins and
+`VOICE_GATEWAY_PUBLIC_URL` to the proxy's browser-facing base. The gateway
+validates the forwarded session/campaign membership before opening Moonshine,
+archives canonical utterance metadata, requires confirmation for consequential
+actions, and treats spoken pause as a resumable narration hold.
+
+## Remote voice chat (optional)
+
+The table can also talk over live participant voice, in the lobby while everyone
+is still building characters and at any point during play. The server runs its
+own SFU (mediasoup) in-process, so there is no third-party service, no account
+and no audio leaving your machine.
+
+Remote voice chat is **off by default**: set `VOICE_ENABLED=1` to turn it on. It
+needs two more things, and both are easy to miss:
 
 1. **HTTPS.** Browsers block microphone access on plain http, so voice needs a
    reverse proxy with a certificate. `localhost` is exempt, so a single-machine

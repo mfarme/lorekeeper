@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# Open Dungeon Master as a single image. Everything the app needs is baked in:
+# Open Dungeon Master as a single image. The app and its shared-table voice
+# gateway run together in one container. Everything the app needs is baked in:
 # the Next.js build, the Open5e content pack, and the MiniLM embedding model.
 # Only the AI services stay outside (llama.cpp, ComfyUI, Kokoro TTS, STT).
 #
@@ -91,6 +92,9 @@ ENV NODE_ENV=production \
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
+# The audio gateway is a sibling process, so its ws dependency is not
+# guaranteed to be included by Next standalone tracing.
+COPY --from=deps --chown=node:node /app/node_modules/ws ./node_modules/ws
 
 # The embedding cache directory is hard-coded to <cwd>/models/embeddings in
 # src/lib/embeddings.ts, so it has to live here and must not be a mount point.
@@ -108,14 +112,14 @@ COPY --from=build --chown=node:node /app/tsconfig.json ./tsconfig.json
 # Runtime state. Creating these before any volume is attached is what seeds a
 # fresh named volume with ownership the unprivileged user can write to.
 RUN mkdir -p data public/uploads public/generated public/generated-audio logs \
-  && chmod +x scripts/docker-entrypoint.sh \
+  && chmod +x scripts/docker-entrypoint.sh scripts/docker-start.sh \
   && chown node:node data public/uploads public/generated public/generated-audio logs
 
 USER node
-EXPOSE 3005
+EXPOSE 3005 8765
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3005)+'/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
-CMD ["node", "server.js"]
+CMD ["/app/scripts/docker-start.sh", "node", "server.js"]

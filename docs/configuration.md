@@ -47,6 +47,12 @@ falls through to the env var.
 | `STT_URL` | `http://127.0.0.1:13305` | Push-to-talk transcription service; Lemonade by default, standalone faster-whisper override |
 | `STT_MODEL` | `distil-large-v3` | Model name for a legacy standalone STT service; Lemonade uses `LEMONADE_STT_MODEL` |
 | `KOKORO_URL` | `http://127.0.0.1:13305` | DM narration service; Lemonade by default, standalone Kokoro override |
+| `VOICE_GATEWAY_ENABLED` | `1` | Start the shared-table streaming mic/STT gateway |
+| `VOICE_GATEWAY_HOST` | `0.0.0.0` | Gateway bind address |
+| `VOICE_GATEWAY_PORT` | `8765` | Gateway WebSocket port; publish this TCP port for table devices |
+| `NEXT_BASE_URL` | `http://127.0.0.1:3005` | Internal URL the gateway uses to forward final utterances into ODM |
+| `VOICE_GATEWAY_PUBLIC_URL` | empty | Browser-facing WSS/WS base when a reverse proxy fronts the gateway |
+| `VOICE_GATEWAY_ORIGINS` | localhost only | Comma-separated exact origins allowed to open the gateway |
 | `DM_DEBUG` | — | `1` logs DM model content and tool calls |
 | `DM_LEAN_TOOLS` | — | `1` removes the stat-mutation tools if the model's tool fidelity suffers |
 | `DM_COMPACT_THRESHOLD` | `120` | Messages before history compaction begins (lower to test) |
@@ -141,6 +147,49 @@ For dev mode, add your phone-facing hostname/IP to `ALLOWED_DEV_ORIGINS` in
 `.env.local` (comma-separated), then open `http://<your-machine>:3005` from
 the phone. The image worker and Ollama can stay on `127.0.0.1` because
 browser requests go through the Next.js server.
+
+### Voice-first shared table
+
+The full-screen projection at `/campaigns/<campaignId>/table` is the primary
+in-person interface. `npm run start:lemonade` starts the TCP WebSocket gateway
+on `VOICE_GATEWAY_PORT` (8765 by default). The table operator clicks **Start
+listening**, selects the speaking character, and the browser keeps its mic open
+through an AudioWorklet that sends 16 kHz mono PCM frames to Lemonade's
+Moonshine realtime endpoint.
+
+Interim transcripts stay in the voice surface. Final transcripts pass through a
+deterministic policy before they can wake the DM: side chatter is ignored,
+tentative planning waits, direct `Ember`/`Lorekeeper` address and committed
+actions respond, and corrections/rules challenges can interrupt narration.
+Only a routed final is inserted as an ODM campaign message. The existing
+server-side narration/TTS queue presents the committed reply, while local and
+server speech detection pause it for barge-in and resume it when the policy
+classifies the utterance as table talk.
+
+The gateway forwards the browser's session cookie to the authenticated ODM
+utterance route and does not own campaign state. It requires an exact Origin
+allowlist and validates campaign membership/mute status through the Next
+`utterance-access` preflight before opening Moonshine. `VOICE_GATEWAY_ENABLED=0`
+disables startup. Plain HTTP is suitable for localhost; remote microphones need
+HTTPS and a WSS-capable reverse-proxy deployment for the gateway. By default,
+only localhost origins are accepted; set `VOICE_GATEWAY_ORIGINS` to the exact
+HTTPS origin(s) used by the table. `VOICE_GATEWAY_PUBLIC_URL` tells the browser
+to use that reverse-proxy endpoint instead of `:8765`.
+
+For nginx, preserve the WebSocket upgrade and forward the gateway path directly:
+
+```nginx
+location /ws/audio/ {
+    proxy_pass http://127.0.0.1:8765;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+```
+
+Set `VOICE_GATEWAY_PUBLIC_URL=https://table.example.org` and
+`VOICE_GATEWAY_ORIGINS=https://table.example.org` when using that proxy.
 
 ### Live voice chat
 
